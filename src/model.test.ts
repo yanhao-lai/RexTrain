@@ -49,10 +49,11 @@ describe('starter question bank', () => {
 describe('custom exam levels', () => {
   const exam: Exam = { id: 'term-1', title: '第一次段考', description: '第一課', questionIds: [seedQuestions[0].id, seedQuestions[2].id], enabled: true }
 
-  it('selects only assigned enabled questions and skips audio without a voice', () => {
+  it('selects only assigned speakable questions when a voice is available', () => {
     expect(isExam(exam)).toBe(true)
     expect(examQuestions(seedQuestions, exam, true).map((question) => question.id)).toEqual(exam.questionIds)
-    expect(examQuestions(seedQuestions, exam, false).map((question) => question.id)).toEqual([seedQuestions[0].id])
+    expect(examQuestions(seedQuestions, exam, false)).toEqual([])
+    expect(examQuestions([{ ...seedQuestions[0], speechText: '' }], exam, true)).toEqual([])
     expect(isExam({ ...exam, questionIds: [seedQuestions[0].id, seedQuestions[0].id] })).toBe(false)
   })
 
@@ -70,8 +71,10 @@ describe('custom exam levels', () => {
     expect(bank.exams).toHaveLength(1)
     expect(bank.questions.every(isQuestion)).toBe(true)
     expect(bank.questions.every((question) => question.examOnly)).toBe(true)
+    expect(bank.questions.every((question) => question.type === 'audio' && question.speechText.trim())).toBe(true)
     expect(bank.questions.every((question) => question.options.length === 4 && new Set(question.options).size === 4 && question.options.includes(question.answer))).toBe(true)
     expect(examQuestions(bank.questions, bank.exams[0], true)).toHaveLength(14)
+    expect(examQuestions(bank.questions, bank.exams[0], false)).toEqual([])
     expect(practiceQuestions(bank.questions, 1, true, 'level')).toEqual([])
     expect(practiceQuestions(bank.questions, 1, true, 'listening')).toEqual([])
   })

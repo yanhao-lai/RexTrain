@@ -129,6 +129,7 @@ export default function App() {
   const [hasInk, setHasInk] = useState(false)
   const [showHandwritingAnswer, setShowHandwritingAnswer] = useState(false)
   const [activeExam, setActiveExam] = useState<Exam | null>(null)
+  const [examMode, setExamMode] = useState<'tiles' | 'write' | null>(null)
   const [speechRate, setSpeechRate] = useState(readSpeechRate)
 
   useEffect(() => subscribeQuestions((bank) => { setOverrides(bank.questions); setExams(bank.exams) }, setDataError), [])
@@ -146,16 +147,26 @@ export default function App() {
     return [...map.values()]
   }, [overrides])
   const current = round[questionIndex]
+  const syllableStarts = useMemo(() => {
+    const starts = new Set<number>()
+    let position = 0
+    for (const syllable of current?.answer.trim().split(/\s+/).slice(0, -1) || []) {
+      position += Array.from(syllable).length
+      starts.add(position)
+    }
+    return starts
+  }, [current])
   const tokenChoices = useMemo(() => {
-    if (!current || current.type !== 'order') return []
-    const tokens = [...answerTokens(current.answer), ...orderDistractors(current.answer, current.options, current.options.length || 3)].map((value, index) => ({ value, index }))
+    if (!current || (examMode !== 'tiles' && (activeExam || current.type !== 'order'))) return []
+    const distractors = current.type === 'order' && !examMode ? current.options : []
+    const tokens = [...answerTokens(current.answer), ...orderDistractors(current.answer, distractors, distractors.length || 3)].map((value, index) => ({ value, index }))
     const mixed = shuffle(tokens)
     if (mixed.every((token, index) => token.index === index) && mixed.length > 1) mixed.reverse()
     return mixed
-  }, [current])
+  }, [current, examMode, activeExam])
 
-  function start(nextLevel: Level, multi = false, listen: 'choice' | 'write' | null = null, exam: Exam | null = null): void {
-    if (listen && !voiceAvailable) return
+  function start(nextLevel: Level, multi = false, listen: 'choice' | 'write' | null = null, exam: Exam | null = null, nextExamMode: 'tiles' | 'write' | null = null): void {
+    if ((listen || exam) && !voiceAvailable) return
     const pool = exam ? examQuestions(questions, exam, voiceAvailable) : practiceQuestions(questions, nextLevel, voiceAvailable, listen ? 'listening' : multi ? 'multi' : 'level')
     const chosen = exam ? pool : makeRound(pool)
     if (!chosen.length) return
@@ -163,13 +174,14 @@ export default function App() {
     setMultiRound(multi)
     setListeningMode(listen)
     setActiveExam(exam)
+    setExamMode(nextExamMode)
     setRound(chosen)
     setQuestionIndex(0)
     setScore(0)
     setSelectedAnswer(null)
     setSelectedTokens([])
     setFeedback(null)
-    setAudioMode(listen || 'choice')
+    setAudioMode(nextExamMode === 'write' ? 'write' : listen || 'choice')
     setHasInk(false)
     setShowHandwritingAnswer(false)
     setScreen('play')
@@ -177,7 +189,7 @@ export default function App() {
 
   function submit(answer: string): void {
     if (!current || feedback) return
-    const right = current.type === 'order'
+    const right = current.type === 'order' || examMode === 'tiles'
       ? answer.replace(/\s+/g, '') === current.answer.replace(/\s+/g, '')
       : normalizeAnswer(answer) === normalizeAnswer(current.answer)
     recordResult(right)
@@ -196,7 +208,7 @@ export default function App() {
       setSelectedAnswer(null)
       setSelectedTokens([])
       setFeedback(null)
-      setAudioMode(listeningMode || 'choice')
+      setAudioMode(examMode === 'write' ? 'write' : listeningMode || 'choice')
       setHasInk(false)
       setShowHandwritingAnswer(false)
       return
@@ -254,24 +266,24 @@ export default function App() {
           </article>
         })}</div>
       </section>
-      <section className="exam-section"><div className="section-head"><div><span className="section-kicker">SCHOOL EXAMS</span><h2>學校考前關卡 📚</h2><p>依本次考試範圍挑選題目；可在題庫管理新增或調整關卡。</p></div></div>{exams.some((exam) => exam.enabled) ? <div className="exam-grid">{exams.filter((exam) => exam.enabled).map((exam) => { const count = examQuestions(questions, exam, voiceAvailable).length; return <article key={exam.id}><span className="exam-icon">📝</span><h3>{exam.title}</h3><p>{exam.description || '準備好就開始練習！'}</p><span className="exam-count">{count} 題可練習</span><button className="level-button" disabled={!count} onClick={() => start(1, false, null, exam)}>{count ? '開始考前關卡' : '目前沒有可練習的題目'} <ArrowRight size={18} /></button></article> })}</div> : <p className="exam-empty">尚未建立考前關卡。到「題庫管理」挑選這次學校考試的題目。</p>}</section>
+      <section className="exam-section"><div className="section-head"><div><span className="section-kicker">SCHOOL EXAMS</span><h2>學校考前關卡 📚</h2><p>先聽發音，再選擇並排列注音，或用手寫作答。</p></div></div>{exams.some((exam) => exam.enabled) ? <div className="exam-grid">{exams.filter((exam) => exam.enabled).map((exam) => { const count = examQuestions(questions, exam, voiceAvailable).length; return <article key={exam.id}><span className="exam-icon">📝</span><h3>{exam.title}</h3><p>{exam.description || '準備好就開始練習！'}</p><span className="exam-count">{count ? `${count} 題聽力練習` : '需要繁體中文語音及可朗讀的題目'}</span><div className="exam-mode-buttons"><button className="level-button" disabled={!count} onClick={() => start(1, false, null, exam, 'tiles')}>聽力選擇／排序 <ArrowRight size={18} /></button><button className="level-button" disabled={!count} onClick={() => start(1, false, null, exam, 'write')}>聽力手寫 <Pencil size={18} /></button></div></article> })}</div> : <p className="exam-empty">尚未建立考前關卡。到「題庫管理」挑選這次學校考試的題目。</p>}</section>
       <section className="listening-section"><div className="section-head"><div><span className="section-kicker">LISTENING TEST</span><h2>獨立聽力測試 🎧</h2><p>只練聽音題，每回合最多 10 題；不影響冒險關卡的解鎖。</p></div></div><div className="listening-grid"><article><span className="how-icon blue"><Volume2 /></span><h3>聽力選擇測試</h3><p>聽完發音，從四個注音選項中找出答案。</p><button className="level-button" disabled={!practiceQuestions(questions, 1, voiceAvailable, 'listening').length} onClick={() => start(1, false, 'choice')}>開始選擇測試 <ArrowRight size={18} /></button></article><article><span className="how-icon gold"><Pencil /></span><h3>聽力手寫測試</h3><p>聽完發音，在畫布寫注音，再與正解核對。</p><button className="level-button" disabled={!practiceQuestions(questions, 1, voiceAvailable, 'listening').length} onClick={() => start(1, false, 'write')}>開始手寫測試 <ArrowRight size={18} /></button></article></div></section>
       <section className="how-section"><div className="section-head"><div><span className="section-kicker">HOW TO PLAY</span><h2>三種方式，玩出好注音</h2></div></div><div className="how-grid"><div><span className="how-icon green"><BookOpen /></span><h3>看字選注音</h3><p>單字或多字都能練習。</p></div><div><span className="how-icon gold"><Sparkles /></span><h3>注音拼拼看</h3><p>從含有干擾注音的方塊中排出答案。</p></div><div><span className="how-icon blue"><Volume2 /></span><h3>聽聲音選或寫注音</h3><p>聽發音後選擇答案，也能手寫自我核對。</p></div></div></section>
       {!voiceAvailable && <p className="notice">這台裝置目前沒有可用的繁體中文語音；聽力測試暫時無法開始，一般冒險會略過聽音題。可在裝置設定中加入繁體中文語音後重試。</p>}
     </main>}
 
     {screen === 'play' && current && <main className="play-main">
-      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{activeExam ? `📝 ${activeExam.title}` : listeningMode ? `🎧 聽力${listeningMode === 'write' ? '手寫' : '選擇'}測試` : multiRound ? '📚 多字練習' : `${LEVELS[level - 1].icon} ${LEVELS[level - 1].title}`}</div><span>{questionIndex + 1} / {round.length}</span></div>
+      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{activeExam ? `📝 ${activeExam.title} · ${examMode === 'write' ? '手寫' : '排序'}` : listeningMode ? `🎧 聽力${listeningMode === 'write' ? '手寫' : '選擇'}測試` : multiRound ? '📚 多字練習' : `${LEVELS[level - 1].icon} ${LEVELS[level - 1].title}`}</div><span>{questionIndex + 1} / {round.length}</span></div>
       <div className="progress-track"><div style={{ width: `${((questionIndex + 1) / round.length) * 100}%` }} /></div>
-      <section className="question-card"><span className="question-tag">{TYPE_LABELS[current.type]}</span><h2>{current.type === 'audio' ? '聽一聽，選出或寫出正確的注音！' : current.type === 'order' ? '把注音方塊排成正確答案！' : current.prompt.startsWith('找出注音：') ? '找出指定的注音！' : '這個字怎麼讀？'}</h2>
-        {current.type === 'audio' ? <div className="audio-controls"><button className="speak-button" onClick={() => speak(current.speechText, speechRate)}><Volume2 size={35} /> <span>點我聽發音</span></button><label>朗讀速度<select value={speechRate} onChange={(event) => { const rate = Number(event.target.value); setSpeechRate(rate); localStorage.setItem('rextrain-speech-rate-v1', String(rate)); window.speechSynthesis.cancel() }}><option value={0.45}>很慢</option><option value={0.6}>慢</option><option value={0.8}>一般</option><option value={1}>快</option></select></label></div> : <div className="word-card">{current.prompt}</div>}
-        {current.type === 'audio' && !listeningMode && <div className="answer-mode"><button className={audioMode === 'choice' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('choice'); setHasInk(false) }}>選擇作答</button><button className={audioMode === 'write' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('write'); setHasInk(false) }}>手寫作答</button></div>}
-        {current.type === 'order' ? <><div className="answer-tiles" aria-label="已選的注音">{answerTokens(current.answer).map((_, position) => <button key={position} className={selectedTokens[position] === undefined ? 'empty-tile' : 'filled-tile'} onClick={() => setSelectedTokens((previous) => previous.slice(0, position))} disabled={feedback !== null}>{selectedTokens[position] === undefined ? '?' : tokenChoices[selectedTokens[position]].value}</button>)}</div><div className="token-bank">{tokenChoices.map((token, index) => <button key={`${token.index}-${index}`} disabled={selectedTokens.includes(index) || feedback !== null} onClick={() => selectToken(index)}>{token.value}</button>)}</div><button className="check-button" disabled={selectedTokens.length !== answerTokens(current.answer).length || feedback !== null} onClick={() => submit(selectedTokens.map((index) => tokenChoices[index].value).join(''))}>檢查答案 <Check size={19} /></button></> : current.type === 'audio' && audioMode === 'write' ? <div className="write-test"><p>在方框寫下聽到的注音，可用手指、觸控筆或滑鼠。</p><WritingBoard key={current.id} onInkChange={setHasInk} />{!showHandwritingAnswer ? <button className="check-button" disabled={!hasInk} onClick={() => setShowHandwritingAnswer(true)}>顯示答案並核對 <Check size={19} /></button> : <div className="self-check"><p>正確答案：<strong>{current.answer}</strong></p><span>比對你的手寫答案：</span><div><button onClick={() => recordResult(true)} disabled={feedback !== null}>我寫對了</button><button onClick={() => recordResult(false)} disabled={feedback !== null}>再練一次</button></div></div>}</div> : <div className="option-grid">{shuffleStable(current.options, current.id).map((option) => <button key={option} className={`option-button ${feedback && option === current.answer ? 'right' : ''} ${feedback === 'wrong' && option === selectedAnswer ? 'wrong' : ''}`} disabled={feedback !== null} onClick={() => { setSelectedAnswer(option); submit(option) }}>{option}</button>)}</div>}
+      <section className="question-card"><span className="question-tag">{activeExam ? examMode === 'write' ? '考前聽力手寫' : '考前聽力排序' : TYPE_LABELS[current.type]}</span><h2>{activeExam ? current.prompt.includes('：') ? `聽例字，${examMode === 'write' ? '寫出' : '選出並排列'}${current.prompt.split('：')[0]}！` : `聽詞語，${examMode === 'write' ? '寫出' : '選出並排列'}正確注音！` : current.type === 'audio' ? '聽一聽，選出或寫出正確的注音！' : current.type === 'order' ? '把注音方塊排成正確答案！' : current.prompt.startsWith('找出注音：') ? '找出指定的注音！' : '這個字怎麼讀？'}</h2>
+        {(current.type === 'audio' || activeExam) ? <div className="audio-controls"><button className="speak-button" onClick={() => speak(current.speechText, speechRate)}><Volume2 size={35} /> <span>點我聽發音</span></button><label>朗讀速度<select value={speechRate} onChange={(event) => { const rate = Number(event.target.value); setSpeechRate(rate); localStorage.setItem('rextrain-speech-rate-v1', String(rate)); window.speechSynthesis.cancel() }}><option value={0.45}>很慢</option><option value={0.6}>慢</option><option value={0.8}>一般</option><option value={1}>快</option></select></label></div> : <div className="word-card">{current.prompt}</div>}
+        {current.type === 'audio' && !listeningMode && !activeExam && <div className="answer-mode"><button className={audioMode === 'choice' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('choice'); setHasInk(false) }}>選擇作答</button><button className={audioMode === 'write' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('write'); setHasInk(false) }}>手寫作答</button></div>}
+        {(examMode === 'tiles' || (!activeExam && current.type === 'order')) ? <><div className="answer-tiles" aria-label="已選的注音">{answerTokens(current.answer).map((_, position) => <button key={position} className={`${selectedTokens[position] === undefined ? 'empty-tile' : 'filled-tile'} ${syllableStarts.has(position) ? 'syllable-start' : ''}`} onClick={() => setSelectedTokens((previous) => previous.slice(0, position))} disabled={feedback !== null}>{selectedTokens[position] === undefined ? '?' : tokenChoices[selectedTokens[position]].value}</button>)}</div><div className="token-bank">{tokenChoices.map((token, index) => <button key={`${token.index}-${index}`} disabled={selectedTokens.includes(index) || feedback !== null} onClick={() => selectToken(index)}>{token.value}</button>)}</div><button className="check-button" disabled={selectedTokens.length !== answerTokens(current.answer).length || feedback !== null} onClick={() => submit(selectedTokens.map((index) => tokenChoices[index].value).join(''))}>檢查答案 <Check size={19} /></button></> : (current.type === 'audio' || activeExam) && audioMode === 'write' ? <div className="write-test"><p>在方框寫下聽到的注音，可用手指、觸控筆或滑鼠。</p><WritingBoard key={current.id} onInkChange={setHasInk} />{!showHandwritingAnswer ? <button className="check-button" disabled={!hasInk} onClick={() => setShowHandwritingAnswer(true)}>顯示答案並核對 <Check size={19} /></button> : <div className="self-check"><p>正確答案：<strong>{current.answer}</strong></p><span>比對你的手寫答案：</span><div><button onClick={() => recordResult(true)} disabled={feedback !== null}>我寫對了</button><button onClick={() => recordResult(false)} disabled={feedback !== null}>再練一次</button></div></div>}</div> : <div className="option-grid">{shuffleStable(current.options, current.id).map((option) => <button key={option} className={`option-button ${feedback && option === current.answer ? 'right' : ''} ${feedback === 'wrong' && option === selectedAnswer ? 'wrong' : ''}`} disabled={feedback !== null} onClick={() => { setSelectedAnswer(option); submit(option) }}>{option}</button>)}</div>}
         {feedback && <div className={`feedback ${feedback}`} role="status"><span>{feedback === 'correct' ? '答對了！太棒了 🌟' : `再加油！正確答案是 ${current.answer}`}</span><button onClick={nextQuestion}>{questionIndex + 1 === round.length ? '看結果' : '下一題'} <ArrowRight size={18} /></button></div>}
       </section>
     </main>}
 
-    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">{activeExam ? 'EXAM PRACTICE COMPLETE' : listeningMode ? 'LISTENING TEST COMPLETE' : 'ADVENTURE COMPLETE'}</span><h1>{activeExam ? `${activeExam.title} 完成！` : listeningMode ? '聽力測試完成！' : resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{activeExam ? '考前練習完成，可再挑戰一次。' : listeningMode ? '聽力測試成績已記錄，繼續練習吧！' : multiRound ? '多字練習完成，繼續挑戰！' : resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level, multiRound, listeningMode, activeExam)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
+    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">{activeExam ? 'EXAM PRACTICE COMPLETE' : listeningMode ? 'LISTENING TEST COMPLETE' : 'ADVENTURE COMPLETE'}</span><h1>{activeExam ? `${activeExam.title} 完成！` : listeningMode ? '聽力測試完成！' : resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{activeExam ? '考前練習完成，可再挑戰一次。' : listeningMode ? '聽力測試成績已記錄，繼續練習吧！' : multiRound ? '多字練習完成，繼續挑戰！' : resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level, multiRound, listeningMode, activeExam, examMode)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
 
     {screen === 'admin' && <AdminPanel questions={questions} overrides={overrides} setOverrides={setOverrides} exams={exams} setExams={setExams} onBack={() => setScreen('home')} />}
     <footer>REXTRAIN · 在遊戲裡，開心學注音 <span>✦</span> 使用原創方塊視覺</footer>
@@ -370,18 +382,18 @@ function ExamEditor({ initial, questions, onSave, onClose }: { initial: Exam; qu
   const [search, setSearch] = useState('')
   const [type, setType] = useState<'all' | QuestionType>('all')
   const [error, setError] = useState('')
-  const visible = questions.filter((question) => (question.enabled || draft.questionIds.includes(question.id)) &&
+  const visible = questions.filter((question) => ((question.enabled && question.speechText.trim()) || draft.questionIds.includes(question.id)) &&
     (type === 'all' || question.type === type) &&
     `${question.prompt} ${question.answer}`.includes(search.trim()))
   function toggle(id: string): void {
     setDraft((current) => ({ ...current, questionIds: current.questionIds.includes(id) ? current.questionIds.filter((item) => item !== id) : [...current.questionIds, id] }))
   }
   function submitExam(): void {
-    const available = new Set(questions.filter((question) => question.enabled).map((question) => question.id))
+    const available = new Set(questions.filter((question) => question.enabled && question.speechText.trim()).map((question) => question.id))
     const clean = { ...draft, title: draft.title.trim(), description: draft.description.trim(), questionIds: draft.questionIds.filter((id) => available.has(id)) }
     if (!clean.title) { setError('請填寫關卡名稱。'); return }
     if (!clean.questionIds.length) { setError('請至少選擇一題。'); return }
     if (!onSave(clean)) setError('儲存失敗，請確認瀏覽器儲存空間。')
   }
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><div className="edit-modal exam-editor" role="dialog" aria-modal="true" aria-labelledby="exam-edit-title"><div className="modal-header"><h2 id="exam-edit-title">設定考前關卡</h2><button aria-label="關閉" onClick={onClose}><X /></button></div><div className="form-grid"><label>關卡名稱<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="例如：第一學期第一次段考" maxLength={50} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} /> 公開顯示此關卡</label><label className="wide">考試範圍說明<input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="例如：第 1～3 課的生字與詞語" maxLength={160} /></label></div><div className="exam-picker-head"><strong>挑選考試題目（已選 {draft.questionIds.length} 題）</strong><p>可先在題庫管理新增或匯入題目，再回來加入此關卡。</p></div><div className="exam-picker-tools"><input aria-label="搜尋題目" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋字詞或注音" /><select aria-label="篩選題型" value={type} onChange={(event) => setType(event.target.value as 'all' | QuestionType)}><option value="all">全部題型</option><option value="choice">看字選注音</option><option value="order">注音拼拼看</option><option value="audio">聽力題</option></select></div><div className="exam-picker-actions"><button onClick={() => setDraft((current) => ({ ...current, questionIds: [...new Set([...current.questionIds, ...visible.filter((question) => question.enabled).map((question) => question.id)])] }))}>全選目前結果</button><button onClick={() => setDraft((current) => ({ ...current, questionIds: current.questionIds.filter((id) => !visible.some((question) => question.id === id)) }))}>清除目前結果</button></div><div className="exam-question-picker">{visible.map((question) => <label key={question.id}><input type="checkbox" checked={draft.questionIds.includes(question.id)} onChange={() => toggle(question.id)} /><span><strong>{question.prompt}</strong><small>{TYPE_LABELS[question.type]} · {question.answer}{!question.enabled ? ' · 已停用' : ''}</small></span></label>)}{!visible.length && <p>沒有符合的題目。</p>}</div>{error && <p className="field-error">{error}</p>}<div className="modal-actions"><button className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" onClick={submitExam}><Check size={18} /> 儲存關卡</button></div></div></div>
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><div className="edit-modal exam-editor" role="dialog" aria-modal="true" aria-labelledby="exam-edit-title"><div className="modal-header"><h2 id="exam-edit-title">設定考前關卡</h2><button aria-label="關閉" onClick={onClose}><X /></button></div><div className="form-grid"><label>關卡名稱<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="例如：第一學期第一次段考" maxLength={50} /></label><label className="checkbox-label"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} /> 公開顯示此關卡</label><label className="wide">考試範圍說明<input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="例如：第 1～3 課的生字與詞語" maxLength={160} /></label></div><div className="exam-picker-head"><strong>挑選考試題目（已選 {draft.questionIds.length} 題）</strong><p>只可加入有「朗讀文字」的題目；可先新增或匯入題目。</p></div><div className="exam-picker-tools"><input aria-label="搜尋題目" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋字詞或注音" /><select aria-label="篩選題型" value={type} onChange={(event) => setType(event.target.value as 'all' | QuestionType)}><option value="all">全部題型</option><option value="choice">看字選注音</option><option value="order">注音拼拼看</option><option value="audio">聽力題</option></select></div><div className="exam-picker-actions"><button onClick={() => setDraft((current) => ({ ...current, questionIds: [...new Set([...current.questionIds, ...visible.filter((question) => question.enabled && question.speechText.trim()).map((question) => question.id)])] }))}>全選目前結果</button><button onClick={() => setDraft((current) => ({ ...current, questionIds: current.questionIds.filter((id) => !visible.some((question) => question.id === id)) }))}>清除目前結果</button></div><div className="exam-question-picker">{visible.map((question) => <label key={question.id}><input type="checkbox" checked={draft.questionIds.includes(question.id)} onChange={() => toggle(question.id)} /><span><strong>{question.prompt}</strong><small>{TYPE_LABELS[question.type]} · {question.answer}{!question.enabled ? ' · 已停用' : !question.speechText.trim() ? ' · 無朗讀文字' : ''}</small></span></label>)}{!visible.length && <p>沒有符合的題目。</p>}</div>{error && <p className="field-error">{error}</p>}<div className="modal-actions"><button className="secondary-button" onClick={onClose}>取消</button><button className="primary-button" onClick={submitExam}><Check size={18} /> 儲存關卡</button></div></div></div>
 }

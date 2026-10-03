@@ -69,9 +69,10 @@ export function practiceQuestions(questions: Question[], level: Level, voiceAvai
 }
 
 export function examQuestions(questions: Question[], exam: Exam, voiceAvailable: boolean): Question[] {
+  if (!voiceAvailable) return []
   const byId = new Map(questions.map((question) => [question.id, question]))
   return exam.questionIds.map((id) => byId.get(id)).filter((question): question is Question =>
-    Boolean(question?.enabled && (question.type !== 'audio' || voiceAvailable)))
+    Boolean(question?.enabled && question.speechText.trim()))
 }
 
 export function shuffle<T>(items: T[]): T[] {
