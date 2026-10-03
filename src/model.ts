@@ -10,6 +10,7 @@ export interface Question {
   options: string[]
   speechText: string
   enabled: boolean
+  examOnly?: boolean
 }
 
 export interface Exam {
@@ -62,7 +63,7 @@ export function isValidDistractors(answer: string, options: string[]): boolean {
 }
 
 export function practiceQuestions(questions: Question[], level: Level, voiceAvailable: boolean, mode: 'level' | 'multi' | 'listening'): Question[] {
-  return questions.filter((question) => question.enabled &&
+  return questions.filter((question) => question.enabled && !question.examOnly &&
     (mode === 'listening' ? question.type === 'audio' : mode === 'multi' ? Array.from(question.prompt).length >= 2 : question.level === level) &&
     (question.type !== 'audio' || voiceAvailable))
 }

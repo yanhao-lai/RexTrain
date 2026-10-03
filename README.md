@@ -6,6 +6,8 @@
 
 每道聽音題可選「很慢、慢、一般、快」四種朗讀速度；選擇會保存在目前瀏覽器。首頁的「學校考前關卡」可由出題者自行命名並挑選當次考試題目，範圍可跨原有三關，練習成績不影響冒險關卡的星星。
 
+已建立第一個「學校注音考前關卡」，含 14 題：辨認 ㄋ、ㄍ、ㄞ、ㄥ、ㄧㄚ、ㄧㄡ、ㄧㄤ，以及選出好朋友、一起來玩、翹翹板、上上下下、高高低低、好像小鳥、飛的注音。這些題目標記為考前關卡專用，不會混入原本的冒險或獨立聽力測試。
+
 ## 本機開發
 
 需 Node.js 22 以上。
@@ -37,7 +39,7 @@ npm run build:pages
 欄位順序：
 
 ```text
-id,type,level,prompt,answer,options,speechText,enabled
+id,type,level,prompt,answer,options,speechText,enabled,examOnly
 ```
 
 - `id` 新增時可留空，由系統產生。
@@ -45,6 +47,7 @@ id,type,level,prompt,answer,options,speechText,enabled
 - `answer` 填注音，多音節以空格隔開，例如 `ㄅㄞˊ ㄩㄣˊ`。
 - 選擇及聽音題的 `options` 為四個以 `|` 分隔、互不重複的注音，且必須包含答案。排序題可填最多六個以 `|` 分隔、答案中沒有的單一干擾注音，例如 `ㄆ|ㄠ|ㄤ`；留空時會自動產生三個。
 - 聽音題的 `speechText` 必填，建議填中文字詞。`enabled` 為 `true` 或 `false`。
+- `examOnly` 為 `true` 時，題目只出現在選取它的考前關卡；舊版沒有此欄的 CSV 仍可匯入，預設為 `false`。
 
 匯入時若有錯誤列，需修正後才可提交。管理頁也可匯出 CSV 備份；**實際發佈使用 `questions.json`**。
 

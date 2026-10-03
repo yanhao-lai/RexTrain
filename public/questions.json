@@ -1,4 +1,27 @@
 {
-  "questions": [],
-  "exams": []
+  "questions": [
+    { "id": "school-symbol-n", "type": "choice", "level": 1, "prompt": "找出注音：ㄋ", "answer": "ㄋ", "options": ["ㄋ", "ㄌ", "ㄉ", "ㄊ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-g", "type": "choice", "level": 1, "prompt": "找出注音：ㄍ", "answer": "ㄍ", "options": ["ㄍ", "ㄎ", "ㄏ", "ㄐ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-ai", "type": "choice", "level": 1, "prompt": "找出注音：ㄞ", "answer": "ㄞ", "options": ["ㄞ", "ㄟ", "ㄠ", "ㄢ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-eng", "type": "choice", "level": 1, "prompt": "找出注音：ㄥ", "answer": "ㄥ", "options": ["ㄥ", "ㄣ", "ㄤ", "ㄦ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-ya", "type": "choice", "level": 1, "prompt": "找出注音：ㄧㄚ", "answer": "ㄧㄚ", "options": ["ㄧㄚ", "ㄧㄝ", "ㄧㄠ", "ㄧㄡ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-you", "type": "choice", "level": 1, "prompt": "找出注音：ㄧㄡ", "answer": "ㄧㄡ", "options": ["ㄧㄡ", "ㄧㄠ", "ㄧㄢ", "ㄧㄤ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-symbol-yang", "type": "choice", "level": 1, "prompt": "找出注音：ㄧㄤ", "answer": "ㄧㄤ", "options": ["ㄧㄤ", "ㄧㄢ", "ㄧㄥ", "ㄧㄡ"], "speechText": "", "enabled": true, "examOnly": true },
+    { "id": "school-word-friends", "type": "choice", "level": 3, "prompt": "好朋友", "answer": "ㄏㄠˇ ㄆㄥˊ ㄧㄡˇ", "options": ["ㄏㄠˇ ㄆㄥˊ ㄧㄡˇ", "ㄏㄠˇ ㄆㄥˊ ㄧㄡˊ", "ㄏㄠˋ ㄆㄥˊ ㄧㄡˇ", "ㄏㄠˇ ㄆㄥˇ ㄧㄡˇ"], "speechText": "好朋友", "enabled": true, "examOnly": true },
+    { "id": "school-word-play", "type": "choice", "level": 3, "prompt": "一起來玩", "answer": "ㄧˋ ㄑㄧˇ ㄌㄞˊ ㄨㄢˊ", "options": ["ㄧˋ ㄑㄧˇ ㄌㄞˊ ㄨㄢˊ", "ㄧˋ ㄑㄧˇ ㄌㄞˇ ㄨㄢˊ", "ㄧˋ ㄑㄧˇ ㄌㄞˊ ㄨㄢˇ", "ㄧˋ ㄑㄧˋ ㄌㄞˊ ㄨㄢˊ"], "speechText": "一起來玩", "enabled": true, "examOnly": true },
+    { "id": "school-word-seesaw", "type": "choice", "level": 3, "prompt": "翹翹板", "answer": "ㄑㄧㄠˋ ㄑㄧㄠˋ ㄅㄢˇ", "options": ["ㄑㄧㄠˋ ㄑㄧㄠˋ ㄅㄢˇ", "ㄑㄧㄠˊ ㄑㄧㄠˋ ㄅㄢˇ", "ㄑㄧㄠˋ ㄑㄧㄠˋ ㄅㄢˋ", "ㄑㄧㄠˋ ㄑㄧㄠˇ ㄅㄢˇ"], "speechText": "翹翹板", "enabled": true, "examOnly": true },
+    { "id": "school-word-up-down", "type": "choice", "level": 3, "prompt": "上上下下", "answer": "ㄕㄤˋ ㄕㄤˋ ㄒㄧㄚˋ ㄒㄧㄚˋ", "options": ["ㄕㄤˋ ㄕㄤˋ ㄒㄧㄚˋ ㄒㄧㄚˋ", "ㄕㄤˇ ㄕㄤˋ ㄒㄧㄚˋ ㄒㄧㄚˋ", "ㄕㄤˋ ㄕㄤˋ ㄒㄧㄚˇ ㄒㄧㄚˋ", "ㄕㄤˋ ㄕㄤˋ ㄒㄧㄚˋ ㄒㄧㄚˇ"], "speechText": "上上下下", "enabled": true, "examOnly": true },
+    { "id": "school-word-high-low", "type": "choice", "level": 3, "prompt": "高高低低", "answer": "ㄍㄠ ㄍㄠ ㄉㄧ ㄉㄧ", "options": ["ㄍㄠ ㄍㄠ ㄉㄧ ㄉㄧ", "ㄍㄠˇ ㄍㄠ ㄉㄧ ㄉㄧ", "ㄍㄠ ㄍㄠ ㄉㄧˇ ㄉㄧ", "ㄍㄠ ㄍㄠ ㄉㄧ ㄉㄧˇ"], "speechText": "高高低低", "enabled": true, "examOnly": true },
+    { "id": "school-word-bird", "type": "choice", "level": 3, "prompt": "好像小鳥", "answer": "ㄏㄠˇ ㄒㄧㄤˋ ㄒㄧㄠˇ ㄋㄧㄠˇ", "options": ["ㄏㄠˇ ㄒㄧㄤˋ ㄒㄧㄠˇ ㄋㄧㄠˇ", "ㄏㄠˇ ㄒㄧㄤˇ ㄒㄧㄠˇ ㄋㄧㄠˇ", "ㄏㄠˇ ㄒㄧㄤˋ ㄒㄧㄠˇ ㄋㄧㄠˋ", "ㄏㄠˋ ㄒㄧㄤˋ ㄒㄧㄠˇ ㄋㄧㄠˇ"], "speechText": "好像小鳥", "enabled": true, "examOnly": true },
+    { "id": "school-word-fly", "type": "choice", "level": 1, "prompt": "飛", "answer": "ㄈㄟ", "options": ["ㄈㄟ", "ㄈㄟˇ", "ㄈㄟˋ", "ㄆㄟ"], "speechText": "飛", "enabled": true, "examOnly": true }
+  ],
+  "exams": [
+    {
+      "id": "school-zhuyin-first-exam",
+      "title": "學校注音考前關卡",
+      "description": "ㄋ、ㄍ、ㄞ、ㄥ、ㄧㄚ、ㄧㄡ、ㄧㄤ；好朋友、一起來玩、翹翹板、上上下下、高高低低、好像小鳥、飛",
+      "questionIds": ["school-symbol-n", "school-symbol-g", "school-symbol-ai", "school-symbol-eng", "school-symbol-ya", "school-symbol-you", "school-symbol-yang", "school-word-friends", "school-word-play", "school-word-seesaw", "school-word-up-down", "school-word-high-low", "school-word-bird", "school-word-fly"],
+      "enabled": true
+    }
+  ]
 }

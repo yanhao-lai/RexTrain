@@ -1,7 +1,8 @@
 import { isValidDistractors, normalizeAnswer, type Level, type Question, type QuestionType } from './model'
 
-export const CSV_HEADER = ['id', 'type', 'level', 'prompt', 'answer', 'options', 'speechText', 'enabled']
-export const CSV_EXAMPLE = `id,type,level,prompt,answer,options,speechText,enabled\n,choice,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n,order,1,貓,ㄇㄠ,ㄆ|ㄊ|ㄥ,貓,true\n,audio,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n,order,2,白雲,ㄅㄞˊ ㄩㄣˊ,ㄆ|ㄠ|ㄤ,白雲,true\n`
+const LEGACY_CSV_HEADER = ['id', 'type', 'level', 'prompt', 'answer', 'options', 'speechText', 'enabled']
+export const CSV_HEADER = [...LEGACY_CSV_HEADER, 'examOnly']
+export const CSV_EXAMPLE = `id,type,level,prompt,answer,options,speechText,enabled,examOnly\n,choice,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true,false\n,order,1,貓,ㄇㄠ,ㄆ|ㄊ|ㄥ,貓,true,false\n,audio,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true,false\n,order,2,白雲,ㄅㄞˊ ㄩㄣˊ,ㄆ|ㄠ|ㄤ,白雲,true,false\n`
 
 function parseRows(csv: string): string[][] {
   const rows: string[][] = []
@@ -36,7 +37,7 @@ function escapeCell(value: string): string {
 
 export function exportQuestions(questions: Question[]): string {
   return [CSV_HEADER.join(','), ...questions.map((q) =>
-    [q.id, q.type, q.level, q.prompt, q.answer, q.options.join('|'), q.speechText, q.enabled].map((value) => escapeCell(String(value))).join(','),
+    [q.id, q.type, q.level, q.prompt, q.answer, q.options.join('|'), q.speechText, q.enabled, Boolean(q.examOnly)].map((value) => escapeCell(String(value))).join(','),
   )].join('\r\n') + '\r\n'
 }
 
@@ -44,7 +45,9 @@ export interface ImportResult { questions: Question[]; errors: string[]; skipped
 
 export function importQuestions(csv: string, existing: Question[]): ImportResult {
   const rows = parseRows(csv)
-  if (!rows.length || CSV_HEADER.some((header, index) => rows[0][index]?.trim() !== header) || rows[0].length !== CSV_HEADER.length) {
+  const header = rows[0]?.map((cell) => cell.trim())
+  const legacy = header?.join(',') === LEGACY_CSV_HEADER.join(',')
+  if (!header || (!legacy && header.join(',') !== CSV_HEADER.join(','))) {
     return { questions: [], errors: [`標題列必須是：${CSV_HEADER.join(',')}`], skipped: 0 }
   }
   const errors: string[] = []
@@ -54,8 +57,8 @@ export function importQuestions(csv: string, existing: Question[]): ImportResult
   const knownIds = new Set(existing.map((q) => q.id))
   rows.slice(1).forEach((cells, index) => {
     const line = index + 2
-    if (cells.length !== CSV_HEADER.length) { errors.push(`第 ${line} 列：欄位數量不正確`); return }
-    const [rawId, rawType, rawLevel, rawPrompt, rawAnswer, rawOptions, rawSpeech, rawEnabled] = cells.map((cell) => cell.trim())
+    if (cells.length !== (legacy ? LEGACY_CSV_HEADER.length : CSV_HEADER.length)) { errors.push(`第 ${line} 列：欄位數量不正確`); return }
+    const [rawId, rawType, rawLevel, rawPrompt, rawAnswer, rawOptions, rawSpeech, rawEnabled, rawExamOnly = 'false'] = cells.map((cell) => cell.trim())
     const type = rawType as QuestionType
     const level = Number(rawLevel) as Level
     const answer = normalizeAnswer(rawAnswer)
@@ -66,6 +69,7 @@ export function importQuestions(csv: string, existing: Question[]): ImportResult
     if (![1, 2, 3].includes(level)) issues.push('level 必須是 1、2 或 3')
     if (!rawPrompt || !answer) issues.push('prompt 與 answer 不可空白')
     if (rawEnabled !== 'true' && rawEnabled !== 'false') issues.push('enabled 必須是 true 或 false')
+    if (rawExamOnly !== 'true' && rawExamOnly !== 'false') issues.push('examOnly 必須是 true 或 false')
     if (type !== 'order' && (options.length !== 4 || new Set(options).size !== 4 || !options.includes(answer))) issues.push('選擇題需 4 個不重複選項，並包含正確答案')
     if (type === 'order' && !isValidDistractors(answer, options)) issues.push('排序題的 options 只能填 0～6 個不重複、且不在答案中的單一注音符號')
     if (type === 'audio' && !rawSpeech) issues.push('聽音題需填 speechText')
@@ -75,7 +79,7 @@ export function importQuestions(csv: string, existing: Question[]): ImportResult
     if (issues.length) { errors.push(`第 ${line} 列：${issues.join('；')}`); return }
     if (known.has(signature)) { skipped++; return }
     const id = rawId || crypto.randomUUID()
-    questions.push({ id, type, level, prompt: rawPrompt, answer, options, speechText: rawSpeech, enabled })
+    questions.push({ id, type, level, prompt: rawPrompt, answer, options, speechText: rawSpeech, enabled, examOnly: rawExamOnly === 'true' })
     known.add(signature)
     knownIds.add(id)
   })

@@ -14,7 +14,8 @@ export function isQuestion(value: unknown): value is Question {
     typeof q.prompt === 'string' && typeof q.answer === 'string' &&
     Array.isArray(q.options) && q.options.every((option) => typeof option === 'string') &&
     (q.type !== 'order' || isValidDistractors(q.answer, q.options)) &&
-    typeof q.speechText === 'string' && typeof q.enabled === 'boolean'
+    typeof q.speechText === 'string' && typeof q.enabled === 'boolean' &&
+    (q.examOnly === undefined || typeof q.examOnly === 'boolean')
 }
 
 export function readDrafts(): Question[] {

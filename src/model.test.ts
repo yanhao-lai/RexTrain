@@ -3,6 +3,7 @@ import { importQuestions, exportQuestions, CSV_EXAMPLE } from './csv'
 import { answerTokens, examQuestions, isValidDistractors, orderDistractors, practiceQuestions, starsForScore, type Exam } from './model'
 import { seedQuestions } from './seed'
 import { isExam, isQuestion, mergeBank, parsePublishedBank } from './questionStore'
+import publishedBank from '../public/questions.json'
 
 describe('starter question bank', () => {
   it('provides three modes at every level with valid choices', () => {
@@ -62,6 +63,18 @@ describe('custom exam levels', () => {
     expect(mergeBank(published, [], [changed]).exams).toEqual([changed])
     expect(() => parsePublishedBank({ questions: [], exams: [{ ...exam, questionIds: [] }] })).toThrow()
   })
+
+  it('publishes the requested 14 school exam items without adding them to regular practice', () => {
+    const bank = parsePublishedBank(publishedBank)
+    expect(bank.questions).toHaveLength(14)
+    expect(bank.exams).toHaveLength(1)
+    expect(bank.questions.every(isQuestion)).toBe(true)
+    expect(bank.questions.every((question) => question.examOnly)).toBe(true)
+    expect(bank.questions.every((question) => question.options.length === 4 && new Set(question.options).size === 4 && question.options.includes(question.answer))).toBe(true)
+    expect(examQuestions(bank.questions, bank.exams[0], true)).toHaveLength(14)
+    expect(practiceQuestions(bank.questions, 1, true, 'level')).toEqual([])
+    expect(practiceQuestions(bank.questions, 1, true, 'listening')).toEqual([])
+  })
 })
 
 describe('CSV transfer', () => {
@@ -80,10 +93,18 @@ describe('CSV transfer', () => {
   })
 
   it('round trips CSV with quoted content', () => {
-    const question = { ...seedQuestions[0], id: 'custom', prompt: '貓,"小貓"' }
+    const question = { ...seedQuestions[0], id: 'custom', prompt: '貓,"小貓"', examOnly: true }
     const parsed = importQuestions(exportQuestions([question]), [])
     expect(parsed.errors).toEqual([])
     expect(parsed.questions[0].prompt).toBe(question.prompt)
+    expect(parsed.questions[0].examOnly).toBe(true)
+  })
+
+  it('still imports older eight-column CSV files', () => {
+    const oldCsv = 'id,type,level,prompt,answer,options,speechText,enabled\n,choice,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n'
+    const result = importQuestions(oldCsv, [])
+    expect(result.errors).toEqual([])
+    expect(result.questions[0].examOnly).toBe(false)
   })
 })
 
