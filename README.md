@@ -30,6 +30,14 @@ Firestore 規則讓訪客讀取公開題目，只允許 `admins/{uid}` 中已授
 
 ## GitHub 自動部署
 
+### GitHub Pages（先公開練習網站）
+
+此倉庫已包含 `.github/workflows/pages.yml`。在 GitHub 開啟 **Settings → Pages → Build and deployment → Source**，選 **GitHub Actions**。接著到 **Actions → Publish GitHub Pages → Run workflow** 執行一次；之後每次推送 `main` 都會自動更新。成功後網址為 `https://yanhao-lai.github.io/RexTrain/`。此流程將 Vite 的網站路徑設為 `/RexTrain/`。
+
+未設定 Firebase 時，公開網站可使用內建練習題與同一瀏覽器的闖關紀錄；公開題庫管理會停用。若要在線上新增或匯入題目，仍需完成上方 Firebase Authentication 與 Firestore 設定，並在 GitHub Actions Variables 填入四個 `VITE_FIREBASE_*` 網站設定值。
+
+### Firebase Hosting（可選的另一個網站網址）
+
 工作流程位於 `.github/workflows/deploy.yml`。在 GitHub 專案中設定以下 Actions **Variables**：`VITE_FIREBASE_API_KEY`、`VITE_FIREBASE_AUTH_DOMAIN`、`VITE_FIREBASE_PROJECT_ID`、`VITE_FIREBASE_APP_ID`；設定 **Secret**：`FIREBASE_SERVICE_ACCOUNT`（Firebase 專案的部署服務帳號 JSON）。Pull request 會執行測試、建置並發佈預覽；推送至 `main` 才會發佈正式 Hosting。首次啟用前，請確認主分支為 `main` 並已部署 Firestore 規則。
 
 如果還沒設定部署 Secret，工作流程只會測試及建置，不會發佈。網站可先使用 Firebase 提供的 `web.app` 網址，稍後再連自有網域。
