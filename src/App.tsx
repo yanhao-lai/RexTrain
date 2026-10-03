@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Download, FileUp, LockKeyhole, Pencil, Play, Plus, RotateCcw, Settings, Sparkles, Star, Trash2, Volume2, X } from 'lucide-react'
 import { CSV_EXAMPLE, exportQuestions, importQuestions, type ImportResult } from './csv'
-import { firebaseConfigured, loginAdmin, logoutAdmin, removeQuestion, saveQuestion, subscribeAdmin, subscribeQuestions } from './firebase'
+import { clearDrafts, readDrafts, saveQuestion, subscribeQuestions } from './questionStore'
 import { answerTokens, LEVELS, normalizeAnswer, readProgress, saveProgress, shuffle, starsForScore, TYPE_LABELS, type Level, type Progress, type Question, type QuestionType } from './model'
 import { seedQuestions } from './seed'
-import type { User } from 'firebase/auth'
 
 type Screen = 'home' | 'play' | 'result' | 'admin'
 const emptyQuestion = (): Question => ({ id: crypto.randomUUID(), type: 'choice', level: 1, prompt: '', answer: '', options: ['', '', '', ''], speechText: '', enabled: true })
@@ -15,7 +14,16 @@ function download(name: string, content: string): void {
   link.href = url
   link.download = name
   link.click()
-  URL.revokeObjectURL(url)
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}
+
+function downloadPublishedBank(questions: Question[]): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(questions, null, 2) + '\n'], { type: 'application/json;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'questions.json'
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 function makeRound(questions: Question[]): Question[] {
@@ -63,8 +71,6 @@ export default function App() {
   const [progress, setProgress] = useState<Progress>(readProgress)
   const [voiceAvailable, setVoiceAvailable] = useState(false)
   const [dataError, setDataError] = useState('')
-  const [user, setUser] = useState<User | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [level, setLevel] = useState<Level>(1)
   const [round, setRound] = useState<Question[]>([])
   const [questionIndex, setQuestionIndex] = useState(0)
@@ -75,7 +81,6 @@ export default function App() {
   const [resultStars, setResultStars] = useState(0)
 
   useEffect(() => subscribeQuestions(setOverrides, setDataError), [])
-  useEffect(() => subscribeAdmin((nextUser, admin) => { setUser(nextUser); setIsAdmin(admin) }), [])
   useEffect(() => {
     if (!('speechSynthesis' in window)) return
     const update = () => setVoiceAvailable(Boolean(getVoice()))
@@ -197,7 +202,7 @@ export default function App() {
 
     {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">ADVENTURE COMPLETE</span><h1>{resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
 
-    {screen === 'admin' && <AdminPanel questions={questions} overrides={overrides} setOverrides={setOverrides} user={user} isAdmin={isAdmin} onBack={() => setScreen('home')} />}
+    {screen === 'admin' && <AdminPanel questions={questions} overrides={overrides} setOverrides={setOverrides} onBack={() => setScreen('home')} />}
     <footer>REXTRAIN · 在遊戲裡，開心學注音 <span>✦</span> 使用原創方塊視覺</footer>
     {dataError && <div className="error-toast" role="alert">{dataError}<button onClick={() => setDataError('')} aria-label="關閉"><X size={16} /></button></div>}
   </div>
@@ -209,18 +214,20 @@ function shuffleStable(options: string[], seed: string): string[] {
 }
 function hash(value: string): number { let result = 0; for (const char of value) result = (result * 31 + char.charCodeAt(0)) | 0; return result }
 
-function AdminPanel({ questions, overrides, setOverrides, user, isAdmin, onBack }: { questions: Question[]; overrides: Question[]; setOverrides: (value: Question[]) => void; user: User | null; isAdmin: boolean; onBack: () => void }) {
+function AdminPanel({ questions, overrides, setOverrides, onBack }: { questions: Question[]; overrides: Question[]; setOverrides: (value: Question[]) => void; onBack: () => void }) {
   const [editing, setEditing] = useState<Question | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState<'all' | QuestionType>('all')
+  const [draftCount, setDraftCount] = useState(() => readDrafts().length)
   const shown = questions.filter((q) => filter === 'all' || q.type === filter)
 
   async function persist(q: Question): Promise<void> {
-    await saveQuestion(q)
-    if (!firebaseConfigured) setOverrides([...overrides.filter((item) => item.id !== q.id), q])
+    saveQuestion(q)
+    setOverrides([...overrides.filter((item) => item.id !== q.id), q])
+    setDraftCount(readDrafts().length)
   }
   async function handleSave(): Promise<void> {
     if (!editing) return
@@ -230,21 +237,17 @@ function AdminPanel({ questions, overrides, setOverrides, user, isAdmin, onBack 
     if (q.type !== 'order' && (q.options.length !== 4 || new Set(q.options).size !== 4 || !q.options.includes(q.answer))) { setMessage('選擇題需要 4 個不重複選項，且包含正確答案。'); return }
     if (q.type === 'order') q.options = []
     setBusy(true)
-    try { await persist(q); setEditing(null); setMessage('題目已儲存。') }
+    try { await persist(q); setEditing(null); setMessage('已存為本機草稿。下載發佈檔並提交到 GitHub 後才會公開。') }
     catch (error) { setMessage(`儲存失敗：${String(error)}`) }
     finally { setBusy(false) }
   }
-  async function handleDelete(q: Question): Promise<void> {
-    if (!window.confirm(`確定要刪除「${q.prompt}」嗎？`)) return
+  async function handleDisable(q: Question): Promise<void> {
+    if (!window.confirm(`確定要停用「${q.prompt}」嗎？下載並提交發佈檔後，其他人將不再看到這題。`)) return
     setBusy(true)
     try {
-      if (q.id.startsWith('starter-')) await persist({ ...q, enabled: false })
-      else {
-        await removeQuestion(q.id)
-        if (!firebaseConfigured) setOverrides(overrides.filter((item) => item.id !== q.id))
-      }
-      setMessage('題目已移除。')
-    } catch (error) { setMessage(`刪除失敗：${String(error)}`) }
+      await persist({ ...q, enabled: false })
+      setMessage('已在本機草稿停用這題；提交到 GitHub 後才會公開生效。')
+    } catch (error) { setMessage(`停用失敗：${String(error)}`) }
     finally { setBusy(false) }
   }
   async function readFile(file?: File): Promise<void> {
@@ -256,24 +259,23 @@ function AdminPanel({ questions, overrides, setOverrides, user, isAdmin, onBack 
     if (!importResult || importResult.errors.length || !importResult.questions.length) return
     setBusy(true)
     try {
-      for (const q of importResult.questions) await saveQuestion(q)
-      if (!firebaseConfigured) setOverrides([...overrides, ...importResult.questions])
-      setMessage(`已匯入 ${importResult.questions.length} 題。`)
+      for (const q of importResult.questions) saveQuestion(q)
+      setOverrides([...overrides, ...importResult.questions])
+      setDraftCount(readDrafts().length)
+      setMessage(`已匯入 ${importResult.questions.length} 題到本機草稿。下載發佈檔並提交到 GitHub 後才會公開。`)
       setImportResult(null); setShowImport(false)
-    } catch (error) { setMessage(`匯入中斷，已寫入的題目會保留；重新匯入時會跳過重複題。${String(error)}`) }
+    } catch (error) { setMessage(`匯入中斷，已寫入的草稿會保留；重新匯入時會跳過重複題。${String(error)}`) }
     finally { setBusy(false) }
   }
 
   return <main className="admin-main"><div className="admin-heading"><button className="back-button" onClick={onBack}><ArrowLeft size={18} /> 回地圖</button><span className="section-kicker">QUESTION STUDIO</span><h1>題庫管理</h1><p>創造新的練習，把更多注音方塊加進冒險世界。</p></div>
-    {!firebaseConfigured && !import.meta.env.DEV ? <div className="admin-gate"><LockKeyhole size={38} /><h2>尚未連接 Firebase</h2><p>正式網站需要設定 Firebase 才能安全地管理題庫。請參閱專案 README 的上線步驟。</p></div> : !isAdmin ? <div className="admin-gate"><LockKeyhole size={38} /><h2>管理者專用</h2><p>請使用已授權的 Google 帳號登入。</p>{user ? <><p>目前帳號：{user.email}</p><p className="uid">帳號 UID：{user.uid}</p><p>若這是您的帳號，請在 Firestore 建立 admins/{user.uid} 文件後重新登入。</p><button className="secondary-button" onClick={() => void logoutAdmin()}>登出</button></> : <button className="primary-button" onClick={() => void loginAdmin()}>使用 Google 帳號登入</button>}</div> : <>
-      {import.meta.env.DEV && !firebaseConfigured && <div className="notice">本機示範模式：題目只儲存在這個瀏覽器。正式發佈時須設定 Firebase。</div>}
-      {user && <div className="signed-in">管理者：{user.email}<button onClick={() => void logoutAdmin()}>登出</button></div>}
-      <div className="admin-toolbar"><div className="admin-title"><h2>所有題目 <span>{questions.length}</span></h2><p>內建 {seedQuestions.length} 題；可編輯或停用。</p></div><div className="admin-actions"><button className="secondary-button" onClick={() => download('rextrain-template.csv', CSV_EXAMPLE)}><Download size={17} /> 下載範本</button><button className="secondary-button" onClick={() => download('rextrain-questions.csv', exportQuestions(questions))}><Download size={17} /> 匯出題庫</button><button className="secondary-button" onClick={() => setShowImport((value) => !value)}><FileUp size={17} /> 匯入 CSV</button><button className="primary-button" onClick={() => { setEditing(emptyQuestion()); setMessage('') }}><Plus size={18} /> 新增題目</button></div></div>
+    <div className="notice">這裡是本機出題工具。修改只保存在這台裝置；只有將下載的 <strong>questions.json</strong> 提交到 GitHub，題目才會公開更新。任何訪客都能在自己的瀏覽器試編輯，但只有擁有此倉庫寫入權限的人能發佈。</div>
+      <div className="publish-panel"><div><strong>{draftCount ? `${draftCount} 題本機草稿尚未發佈` : '目前沒有本機草稿'}</strong><p>完成新增或匯入後，下載發佈檔並取代倉庫的 <code>public/questions.json</code>。</p></div><div className="publish-actions"><button className="primary-button" onClick={() => downloadPublishedBank(questions)}><Download size={18} /> 下載發佈檔</button><button className="secondary-button" disabled={!draftCount} onClick={() => { if (window.confirm('確定要清除這台裝置的草稿，重新載入 GitHub 上的題庫嗎？')) { clearDrafts(); window.location.reload() } }}>清除本機草稿</button></div></div>
+      <div className="admin-toolbar"><div className="admin-title"><h2>所有題目 <span>{questions.length}</span></h2><p>內建 {seedQuestions.length} 題；可編輯或停用。</p></div><div className="admin-actions"><button className="secondary-button" onClick={() => download('rextrain-template.csv', CSV_EXAMPLE)}><Download size={17} /> 下載範本</button><button className="secondary-button" onClick={() => download('rextrain-questions.csv', exportQuestions(questions))}><Download size={17} /> 匯出 CSV</button><button className="secondary-button" onClick={() => setShowImport((value) => !value)}><FileUp size={17} /> 匯入 CSV</button><button className="primary-button" onClick={() => { setEditing(emptyQuestion()); setMessage('') }}><Plus size={18} /> 新增題目</button></div></div>
       {showImport && <div className="import-panel"><h3>匯入 CSV 題目</h3><p>請使用 UTF-8 CSV，選項以直線符號 | 分隔。先預覽檢查，再正式匯入。</p><input type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} />{importResult && <div className="import-preview"><strong>可匯入 {importResult.questions.length} 題 · 跳過重複 {importResult.skipped} 題 · 錯誤 {importResult.errors.length} 列</strong>{importResult.errors.map((error, index) => <p className="field-error" key={index}>{error}</p>)}<button className="primary-button" disabled={busy || importResult.errors.length > 0 || importResult.questions.length === 0} onClick={() => void commitImport()}>確認匯入</button></div>}</div>}
       {message && <p className="admin-message" role="status">{message}</p>}
       <div className="filter-tabs">{(['all', 'choice', 'order', 'audio'] as const).map((type) => <button key={type} className={filter === type ? 'active' : ''} onClick={() => setFilter(type)}>{type === 'all' ? '全部' : TYPE_LABELS[type]}</button>)}</div>
-      <div className="question-list">{shown.map((q) => <article className={`question-row ${!q.enabled ? 'disabled' : ''}`} key={q.id}><div className="question-row-icon">{q.type === 'audio' ? <Volume2 /> : q.type === 'order' ? <Sparkles /> : <BookOpen />}</div><div className="question-row-copy"><div><strong>{q.prompt}</strong><span className="pill">{TYPE_LABELS[q.type]}</span><span className="pill faint">第 {q.level} 關</span>{!q.enabled && <span className="pill off">已停用</span>}</div><p>答案：{q.answer}</p></div><div className="row-actions"><button aria-label={`編輯 ${q.prompt}`} onClick={() => { setEditing({ ...q, options: q.type === 'order' ? ['', '', '', ''] : [...q.options] }); setMessage('') }}><Pencil size={17} /></button><button aria-label={`刪除 ${q.prompt}`} disabled={busy} onClick={() => void handleDelete(q)}><Trash2 size={17} /></button></div></article>)}</div>
+      <div className="question-list">{shown.map((q) => <article className={`question-row ${!q.enabled ? 'disabled' : ''}`} key={q.id}><div className="question-row-icon">{q.type === 'audio' ? <Volume2 /> : q.type === 'order' ? <Sparkles /> : <BookOpen />}</div><div className="question-row-copy"><div><strong>{q.prompt}</strong><span className="pill">{TYPE_LABELS[q.type]}</span><span className="pill faint">第 {q.level} 關</span>{!q.enabled && <span className="pill off">已停用</span>}</div><p>答案：{q.answer}</p></div><div className="row-actions"><button aria-label={`編輯 ${q.prompt}`} onClick={() => { setEditing({ ...q, options: q.type === 'order' ? ['', '', '', ''] : [...q.options] }); setMessage('') }}><Pencil size={17} /></button><button aria-label={`停用 ${q.prompt}`} disabled={busy || !q.enabled} onClick={() => void handleDisable(q)}><Trash2 size={17} /></button></div></article>)}</div>
       {editing && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null) }}><div className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title"><div className="modal-header"><h2 id="edit-title">{questions.some((q) => q.id === editing.id) ? '編輯題目' : '新增題目'}</h2><button aria-label="關閉" onClick={() => setEditing(null)}><X /></button></div><div className="form-grid"><label>題型<select value={editing.type} onChange={(event) => setEditing({ ...editing, type: event.target.value as QuestionType, options: event.target.value === 'order' ? [] : editing.options.length === 4 ? editing.options : ['', '', '', ''] })}><option value="choice">看字選注音</option><option value="order">注音拼拼看</option><option value="audio">聽聲音選注音</option></select></label><label>關卡<select value={editing.level} onChange={(event) => setEditing({ ...editing, level: Number(event.target.value) as Level })}><option value="1">森林起點</option><option value="2">沙漠探險</option><option value="3">星空城堡</option></select></label><label>題目文字<input value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="例如：貓" /></label><label>正確注音<input value={editing.answer} onChange={(event) => setEditing({ ...editing, answer: event.target.value })} placeholder="例如：ㄇㄠ" /></label>{editing.type !== 'order' && <label className="wide">四個選項，以 | 分隔<input value={editing.options.join('|')} onChange={(event) => setEditing({ ...editing, options: event.target.value.split('|') })} placeholder="ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ" /></label>}<label className="wide">朗讀文字{editing.type === 'audio' ? '（必填）' : '（選填）'}<input value={editing.speechText} onChange={(event) => setEditing({ ...editing, speechText: event.target.value })} placeholder="例如：貓" /></label><label className="checkbox-label"><input type="checkbox" checked={editing.enabled} onChange={(event) => setEditing({ ...editing, enabled: event.target.checked })} /> 啟用此題</label></div>{message && <p className="field-error">{message}</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setEditing(null)}>取消</button><button className="primary-button" disabled={busy} onClick={() => void handleSave()}><Check size={18} /> 儲存題目</button></div></div></div>}
-    </>}
   </main>
 }

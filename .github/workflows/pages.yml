@@ -19,13 +19,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build
-        env:
-          VITE_BASE_PATH: /RexTrain/
-          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      - run: npm run build:pages
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

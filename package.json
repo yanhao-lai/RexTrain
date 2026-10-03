@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:pages": "tsc -b && vite build --mode pages",
     "preview": "vite preview",
     "test": "vitest run"
   },
   "dependencies": {
-    "firebase": "^12.0.0",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

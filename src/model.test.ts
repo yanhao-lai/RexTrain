@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { importQuestions, exportQuestions, CSV_EXAMPLE } from './csv'
 import { answerTokens, starsForScore } from './model'
 import { seedQuestions } from './seed'
+import { isQuestion } from './questionStore'
 
 describe('starter question bank', () => {
   it('provides three modes at every level with valid choices', () => {
@@ -22,6 +23,11 @@ describe('starter question bank', () => {
 
   it('breaks multi syllable answers into tap targets', () => {
     expect(answerTokens('ㄅㄞˊ ㄩㄣˊ')).toEqual(['ㄅ', 'ㄞ', 'ˊ', 'ㄩ', 'ㄣ', 'ˊ'])
+  })
+
+  it('recognizes valid published questions and rejects broken data', () => {
+    expect(seedQuestions.every(isQuestion)).toBe(true)
+    expect(isQuestion({ ...seedQuestions[0], options: null })).toBe(false)
   })
 })
 

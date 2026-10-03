@@ -1,65 +1,48 @@
 # RexTrain 注音方塊冒險
 
-適合國小一年級的手機優先注音練習網站。孩子可免登入遊玩看字選注音、注音排序及聽音選注音三種題型；每回合最多 10 題，依成績取得星星並解鎖下一關。進度只存在同一瀏覽器。題庫內建 54 道起始題，管理者可新增、修改、停用、匯入與匯出題目。
+適合國小一年級的手機優先注音練習網站，使用 GitHub Pages 發佈，不需要 Firebase 或其他後端。孩子可免登入練習看字選注音、注音排序及聽音選注音。內建 54 道起始題；每回合最多 10 題，依成績獲得星星並解鎖下一關。闖關進度只儲存在孩子使用的瀏覽器。
 
-## 本機試玩
+## 本機開發
 
 需 Node.js 22 以上。
 
 ```bash
-npm install
+npm ci
 npm run dev
-```
-
-開啟終端顯示的本機網址。未設定 Firebase 時，開發模式的「題庫管理」可用來試填；變更只會留在該瀏覽器。正式建置若未設定 Firebase，練習仍能使用內建題庫，但題庫管理不會開放。
-
-```bash
 npm test
 npm run build
+npm run build:pages
 ```
 
-## 建立 Firebase 專案
+## 發佈網站到 GitHub Pages
 
-1. 建立 Firebase 專案並加入 Web App。啟用 **Authentication → Google**、**Cloud Firestore** 及 **Hosting**。本專案使用一般 Firebase Hosting，無需 App Hosting 或 Cloud Storage。
-2. 複製 `.env.example` 為 `.env.local`，填入 Web App 設定。這些 `VITE_` 值會進入前端程式；Firebase 安全性由 Firestore 規則管理，請勿把服務帳號私鑰放在此檔。
-3. 安裝 Firebase CLI，登入並將專案與本地目錄連結：`npx firebase-tools login`、`npx firebase-tools use --add`。部署 Firestore 規則：`npx firebase-tools deploy --only firestore:rules`。
-4. 在本機用您的 Google 帳號登入題庫管理頁，畫面會顯示 UID。到 Firestore 主控台建立 `admins/{該 UID}` 文件，內容可為 `{ "name": "owner" }`。重新登入後即可編輯。這個文件只能由 Firebase 主控台或具管理權限的服務帳號建立，前端不能自行授權管理者。
-5. `npm run build` 後執行 `npx firebase-tools deploy --only hosting`。正式發佈前請在 Firebase Hosting 預覽頻道檢查手機畫面，例如 `npx firebase-tools hosting:channel:deploy preview`。
+倉庫已有 `.github/workflows/pages.yml`。在 GitHub 開啟 **Settings → Pages → Build and deployment → Source**，選 **GitHub Actions**。接著在 **Actions → Publish GitHub Pages → Run workflow** 執行一次；之後推送到 `main` 會自動重新發佈。成功後網址為 `https://yanhao-lai.github.io/RexTrain/`。
 
-Firestore 規則讓訪客讀取公開題目，只允許 `admins/{uid}` 中已授權的登入者修改題目。請先部署規則，再開放網站。管理員文件及資料庫位置需在 Firebase 專案中設定。本專案沒有建立兒童帳號，也不會將孩子的成績送到 Firebase。
+## 新增與匯入題目
 
-## GitHub 自動部署
+1. 開啟網站的「題庫管理」。可新增、編輯、停用題目，也可下載 CSV 範本並批次匯入。匯入前會預覽錯誤列與重複題。
+2. 題目先存在**目前瀏覽器的本機草稿**，不會立即改變公開網站。完成後按「下載發佈檔」，得到 `questions.json`。
+3. 以擁有倉庫寫入權限的 GitHub 帳號，將該檔放到倉庫的 `public/questions.json`，提交到 `main`。可在本地取代檔案後執行 `git add public/questions.json`、`git commit`、`git push`；也可以使用 GitHub 網站的檔案編輯或上傳功能。
+4. GitHub Pages 工作流程通過後，新題目才會對所有孩子生效。確認公開題庫更新後，可在管理頁清除這台裝置的本機草稿，重新載入 GitHub 上的版本。
 
-### GitHub Pages（先公開練習網站）
+公開網站的管理頁是**本機出題工具**：任何人都可在自己的瀏覽器試編輯，但只有 GitHub 倉庫的寫入者能發佈給所有人。請不要將個人資料或秘密放入題庫檔，因為公開題目會隨網站提供給訪客。
 
-此倉庫已包含 `.github/workflows/pages.yml`。在 GitHub 開啟 **Settings → Pages → Build and deployment → Source**，選 **GitHub Actions**。接著到 **Actions → Publish GitHub Pages → Run workflow** 執行一次；之後每次推送 `main` 都會自動更新。成功後網址為 `https://yanhao-lai.github.io/RexTrain/`。此流程將 Vite 的網站路徑設為 `/RexTrain/`。
+### CSV 格式
 
-未設定 Firebase 時，公開網站可使用內建練習題與同一瀏覽器的闖關紀錄；公開題庫管理會停用。若要在線上新增或匯入題目，仍需完成上方 Firebase Authentication 與 Firestore 設定，並在 GitHub Actions Variables 填入四個 `VITE_FIREBASE_*` 網站設定值。
-
-### Firebase Hosting（可選的另一個網站網址）
-
-工作流程位於 `.github/workflows/deploy.yml`。在 GitHub 專案中設定以下 Actions **Variables**：`VITE_FIREBASE_API_KEY`、`VITE_FIREBASE_AUTH_DOMAIN`、`VITE_FIREBASE_PROJECT_ID`、`VITE_FIREBASE_APP_ID`；設定 **Secret**：`FIREBASE_SERVICE_ACCOUNT`（Firebase 專案的部署服務帳號 JSON）。Pull request 會執行測試、建置並發佈預覽；推送至 `main` 才會發佈正式 Hosting。首次啟用前，請確認主分支為 `main` 並已部署 Firestore 規則。
-
-如果還沒設定部署 Secret，工作流程只會測試及建置，不會發佈。網站可先使用 Firebase 提供的 `web.app` 網址，稍後再連自有網域。
-
-## CSV 題庫格式
-
-在管理頁下載 CSV 範本，以 UTF-8 儲存。欄位順序：
+欄位順序：
 
 ```text
 id,type,level,prompt,answer,options,speechText,enabled
 ```
 
-- `id` 新增時可空白，由系統產生；既有 ID 不會被批次覆寫。
+- `id` 新增時可留空，由系統產生。
 - `type` 為 `choice`、`order` 或 `audio`；`level` 為 `1`、`2` 或 `3`。
-- `answer` 使用注音，詞語內每個音節以空格隔開，例如 `ㄅㄞˊ ㄩㄣˊ`。
-- 選擇及聽音題的 `options` 為四個以 `|` 分隔且互不重複的注音，必須包含答案；排序題留空。
+- `answer` 填注音，多音節以空格隔開，例如 `ㄅㄞˊ ㄩㄣˊ`。
+- 選擇及聽音題的 `options` 為四個以 `|` 分隔、互不重複的注音，且必須包含答案；排序題留空。
 - 聽音題的 `speechText` 必填，建議填中文字詞。`enabled` 為 `true` 或 `false`。
 
-匯入前會顯示錯誤列與重複題。若檔案有錯誤列，需修正後才能提交。匯入中斷後可重新上傳同檔，已新增的重複題會被跳過。題庫可匯出為 CSV 備份。
+匯入時若有錯誤列，需修正後才可提交。管理頁也可匯出 CSV 備份；**實際發佈使用 `questions.json`**。
 
-## 語音及內容說明
+## 語音與素材
 
-聽音題使用裝置瀏覽器的 `zh-TW` 語音。語音是否存在、聲音品質及發音會隨作業系統而異；缺少繁體中文語音時，聽音題會從該次練習略過。正式公開前，請用預計使用的 iPad、Android 平板及手機試聽。
-
-視覺為原創的方塊遊戲風格，沒有使用 Minecraft 商標或官方圖像。內建題庫用於第一版體驗；公開教學前請由注音教學者再核對詞語與聲調。
+聽音題使用裝置瀏覽器的 `zh-TW` 語音。缺少繁體中文語音時，該次練習會略過聽音題。正式教學前，請在要使用的手機與平板試聽，並由注音教學者核對內建題庫。畫面使用原創方塊遊戲風格，沒有 Minecraft 官方素材。
