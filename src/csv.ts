@@ -1,7 +1,7 @@
-import { normalizeAnswer, type Level, type Question, type QuestionType } from './model'
+import { isValidDistractors, normalizeAnswer, type Level, type Question, type QuestionType } from './model'
 
 export const CSV_HEADER = ['id', 'type', 'level', 'prompt', 'answer', 'options', 'speechText', 'enabled']
-export const CSV_EXAMPLE = `id,type,level,prompt,answer,options,speechText,enabled\n,choice,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n,order,1,貓,ㄇㄠ,,貓,true\n,audio,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n`
+export const CSV_EXAMPLE = `id,type,level,prompt,answer,options,speechText,enabled\n,choice,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n,order,1,貓,ㄇㄠ,ㄆ|ㄊ|ㄥ,貓,true\n,audio,1,貓,ㄇㄠ,ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ,貓,true\n,order,2,白雲,ㄅㄞˊ ㄩㄣˊ,ㄆ|ㄠ|ㄤ,白雲,true\n`
 
 function parseRows(csv: string): string[][] {
   const rows: string[][] = []
@@ -67,7 +67,7 @@ export function importQuestions(csv: string, existing: Question[]): ImportResult
     if (!rawPrompt || !answer) issues.push('prompt 與 answer 不可空白')
     if (rawEnabled !== 'true' && rawEnabled !== 'false') issues.push('enabled 必須是 true 或 false')
     if (type !== 'order' && (options.length !== 4 || new Set(options).size !== 4 || !options.includes(answer))) issues.push('選擇題需 4 個不重複選項，並包含正確答案')
-    if (type === 'order' && options.length) issues.push('排序題的 options 必須留空')
+    if (type === 'order' && !isValidDistractors(answer, options)) issues.push('排序題的 options 只能填 0～6 個不重複、且不在答案中的單一注音符號')
     if (type === 'audio' && !rawSpeech) issues.push('聽音題需填 speechText')
     if (rawId && !/^[a-zA-Z0-9_-]+$/.test(rawId)) issues.push('id 只能包含英數、-、_')
     const signature = `${type}|${level}|${rawPrompt}|${answer}`

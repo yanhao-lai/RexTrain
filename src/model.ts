@@ -38,6 +38,21 @@ export function answerTokens(answer: string): string[] {
   return Array.from(answer.replace(/\s+/g, ''))
 }
 
+const extraSymbols = Array.from('ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦˊˇˋ˙')
+
+export function orderDistractors(answer: string, options: string[], count = 3): string[] {
+  const used = new Set(answerTokens(answer))
+  const supplied = options.filter((symbol) => Array.from(symbol).length === 1 && extraSymbols.includes(symbol) && !used.has(symbol))
+  const pool = [...new Set([...supplied, ...extraSymbols.filter((symbol) => !used.has(symbol))])]
+  return pool.slice(0, count)
+}
+
+export function isValidDistractors(answer: string, options: string[]): boolean {
+  const used = new Set(answerTokens(answer))
+  return options.length <= 6 && new Set(options).size === options.length &&
+    options.every((symbol) => Array.from(symbol).length === 1 && extraSymbols.includes(symbol) && !used.has(symbol))
+}
+
 export function shuffle<T>(items: T[]): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i--) {

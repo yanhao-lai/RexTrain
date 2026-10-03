@@ -1,4 +1,4 @@
-import type { Question } from './model'
+import { isValidDistractors, type Question } from './model'
 
 const draftKey = 'rextrain-question-drafts-v1'
 
@@ -10,6 +10,7 @@ export function isQuestion(value: unknown): value is Question {
     (q.level === 1 || q.level === 2 || q.level === 3) &&
     typeof q.prompt === 'string' && typeof q.answer === 'string' &&
     Array.isArray(q.options) && q.options.every((option) => typeof option === 'string') &&
+    (q.type !== 'order' || isValidDistractors(q.answer, q.options)) &&
     typeof q.speechText === 'string' && typeof q.enabled === 'boolean'
 }
 

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Download, FileUp, LockKeyhole, Pencil, Play, Plus, RotateCcw, Settings, Sparkles, Star, Trash2, Volume2, X } from 'lucide-react'
 import { CSV_EXAMPLE, exportQuestions, importQuestions, type ImportResult } from './csv'
 import { clearDrafts, readDrafts, saveQuestion, subscribeQuestions } from './questionStore'
-import { answerTokens, LEVELS, normalizeAnswer, readProgress, saveProgress, shuffle, starsForScore, TYPE_LABELS, type Level, type Progress, type Question, type QuestionType } from './model'
+import { answerTokens, isValidDistractors, LEVELS, normalizeAnswer, orderDistractors, readProgress, saveProgress, shuffle, starsForScore, TYPE_LABELS, type Level, type Progress, type Question, type QuestionType } from './model'
 import { seedQuestions } from './seed'
 
 type Screen = 'home' | 'play' | 'result' | 'admin'
@@ -65,6 +65,40 @@ function Stars({ count, small = false }: { count: number; small?: boolean }) {
   </span>
 }
 
+function WritingBoard({ onInkChange }: { onInkChange: (hasInk: boolean) => void }) {
+  const canvas = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  function point(event: PointerEvent<HTMLCanvasElement>) {
+    const element = canvas.current!
+    const rect = element.getBoundingClientRect()
+    return { x: (event.clientX - rect.left) * element.width / rect.width, y: (event.clientY - rect.top) * element.height / rect.height }
+  }
+  function start(event: PointerEvent<HTMLCanvasElement>) {
+    const element = canvas.current!
+    const context = element.getContext('2d')!
+    const position = point(event)
+    element.setPointerCapture(event.pointerId)
+    context.strokeStyle = '#265b42'
+    context.lineWidth = 8
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.beginPath()
+    context.moveTo(position.x, position.y)
+    context.lineTo(position.x + 0.1, position.y + 0.1)
+    context.stroke()
+    drawing.current = true
+    onInkChange(true)
+  }
+  function move(event: PointerEvent<HTMLCanvasElement>) {
+    if (!drawing.current) return
+    const position = point(event)
+    const context = canvas.current!.getContext('2d')!
+    context.lineTo(position.x, position.y)
+    context.stroke()
+  }
+  return <div className="writing-area"><canvas ref={canvas} width={900} height={320} aria-label="手寫注音區" onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false }} onPointerCancel={() => { drawing.current = false }} /><button className="secondary-button" type="button" onClick={() => { canvas.current!.getContext('2d')!.clearRect(0, 0, 900, 320); onInkChange(false) }}>清除重寫</button></div>
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home')
   const [overrides, setOverrides] = useState<Question[]>([])
@@ -79,6 +113,10 @@ export default function App() {
   const [selectedTokens, setSelectedTokens] = useState<number[]>([])
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null)
   const [resultStars, setResultStars] = useState(0)
+  const [multiRound, setMultiRound] = useState(false)
+  const [audioMode, setAudioMode] = useState<'choice' | 'write'>('choice')
+  const [hasInk, setHasInk] = useState(false)
+  const [showHandwritingAnswer, setShowHandwritingAnswer] = useState(false)
 
   useEffect(() => subscribeQuestions(setOverrides, setDataError), [])
   useEffect(() => {
@@ -97,23 +135,27 @@ export default function App() {
   const current = round[questionIndex]
   const tokenChoices = useMemo(() => {
     if (!current || current.type !== 'order') return []
-    const tokens = answerTokens(current.answer).map((value, index) => ({ value, index }))
+    const tokens = [...answerTokens(current.answer), ...orderDistractors(current.answer, current.options, current.options.length || 3)].map((value, index) => ({ value, index }))
     const mixed = shuffle(tokens)
     if (mixed.every((token, index) => token.index === index) && mixed.length > 1) mixed.reverse()
     return mixed
   }, [current])
 
-  function start(nextLevel: Level): void {
-    const pool = questions.filter((q) => q.enabled && q.level === nextLevel && (q.type !== 'audio' || voiceAvailable))
+  function start(nextLevel: Level, multi = false): void {
+    const pool = questions.filter((q) => q.enabled && (multi ? Array.from(q.prompt).length >= 2 : q.level === nextLevel) && (q.type !== 'audio' || voiceAvailable))
     const chosen = makeRound(pool)
     if (!chosen.length) return
     setLevel(nextLevel)
+    setMultiRound(multi)
     setRound(chosen)
     setQuestionIndex(0)
     setScore(0)
     setSelectedAnswer(null)
     setSelectedTokens([])
     setFeedback(null)
+    setAudioMode('choice')
+    setHasInk(false)
+    setShowHandwritingAnswer(false)
     setScreen('play')
   }
 
@@ -122,6 +164,11 @@ export default function App() {
     const right = current.type === 'order'
       ? answer.replace(/\s+/g, '') === current.answer.replace(/\s+/g, '')
       : normalizeAnswer(answer) === normalizeAnswer(current.answer)
+    recordResult(right)
+  }
+
+  function recordResult(right: boolean): void {
+    if (feedback) return
     setFeedback(right ? 'correct' : 'wrong')
     if (right) setScore((value) => value + 1)
   }
@@ -132,6 +179,9 @@ export default function App() {
       setSelectedAnswer(null)
       setSelectedTokens([])
       setFeedback(null)
+      setAudioMode('choice')
+      setHasInk(false)
+      setShowHandwritingAnswer(false)
       return
     }
     // Short custom banks still use the same success percentages as a ten-question round.
@@ -139,7 +189,7 @@ export default function App() {
     const earned = starsForScore(normalizedScore)
     setResultStars(earned)
     const next = {
-      stars: { ...progress.stars, [level]: Math.max(progress.stars[level] || 0, earned) },
+      stars: multiRound ? progress.stars : { ...progress.stars, [level]: Math.max(progress.stars[level] || 0, earned) },
       attempts: progress.attempts + round.length,
       correct: progress.correct + score,
     }
@@ -171,6 +221,7 @@ export default function App() {
           <h1>一塊一塊，<br /><em>拼出注音的魔法！</em></h1>
           <p>選一座島嶼出發，邊玩邊認識注音。每答對一題，就離新的冒險更近一步！</p>
           <button className="primary-button" onClick={() => start(1)}><Play size={19} fill="currentColor" /> 開始冒險 <ArrowRight size={19} /></button>
+          <button className="secondary-button multi-start" onClick={() => start(2, true)}>多字練習（2～4 字） <ArrowRight size={18} /></button>
           <div className="hero-stats"><span><strong>{accessibleLevels}</strong> / 3 已解鎖關卡</span><i /><span><strong>{progress.correct}</strong> 題答對</span></div>
         </div>
         <div className="hero-art" aria-hidden="true"><div className="sun" /><div className="cloud cloud-one" /><div className="cloud cloud-two" /><div className="floating-island"><div className="island-grass" /><div className="island-dirt" /><div className="tree trunk" /><div className="tree leaves" /><div className="hero-tile tile-a">ㄅ</div><div className="hero-tile tile-b">ㄆ</div><div className="hero-tile tile-c">ㄇ</div><div className="hero-tile tile-d">ㄈ</div></div><span className="spark spark-a">✦</span><span className="spark spark-b">✦</span></div>
@@ -186,21 +237,22 @@ export default function App() {
           </article>
         })}</div>
       </section>
-      <section className="how-section"><div className="section-head"><div><span className="section-kicker">HOW TO PLAY</span><h2>三種方式，玩出好注音</h2></div></div><div className="how-grid"><div><span className="how-icon green"><BookOpen /></span><h3>看字選注音</h3><p>看看字卡，選出正確的注音。</p></div><div><span className="how-icon gold"><Sparkles /></span><h3>注音拼拼看</h3><p>點擊方塊，把注音排成答案。</p></div><div><span className="how-icon blue"><Volume2 /></span><h3>聽聲音選注音</h3><p>聽聽看，找出聽到的注音。</p></div></div></section>
+      <section className="how-section"><div className="section-head"><div><span className="section-kicker">HOW TO PLAY</span><h2>三種方式，玩出好注音</h2></div></div><div className="how-grid"><div><span className="how-icon green"><BookOpen /></span><h3>看字選注音</h3><p>單字或多字都能練習。</p></div><div><span className="how-icon gold"><Sparkles /></span><h3>注音拼拼看</h3><p>從含有干擾注音的方塊中排出答案。</p></div><div><span className="how-icon blue"><Volume2 /></span><h3>聽聲音選或寫注音</h3><p>聽發音後選擇答案，也能手寫自我核對。</p></div></div></section>
       {!voiceAvailable && <p className="notice">這台裝置目前沒有可用的繁體中文語音；聽音題會暫時略過。可在裝置設定中加入繁體中文語音後重試。</p>}
     </main>}
 
     {screen === 'play' && current && <main className="play-main">
-      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{LEVELS[level - 1].icon} {LEVELS[level - 1].title}</div><span>{questionIndex + 1} / {round.length}</span></div>
+      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{multiRound ? '📚 多字練習' : `${LEVELS[level - 1].icon} ${LEVELS[level - 1].title}`}</div><span>{questionIndex + 1} / {round.length}</span></div>
       <div className="progress-track"><div style={{ width: `${((questionIndex + 1) / round.length) * 100}%` }} /></div>
-      <section className="question-card"><span className="question-tag">{TYPE_LABELS[current.type]}</span><h2>{current.type === 'audio' ? '聽一聽，選出正確的注音！' : current.type === 'order' ? '把注音方塊排成正確答案！' : '這個字怎麼讀？'}</h2>
+      <section className="question-card"><span className="question-tag">{TYPE_LABELS[current.type]}</span><h2>{current.type === 'audio' ? '聽一聽，選出或寫出正確的注音！' : current.type === 'order' ? '把注音方塊排成正確答案！' : '這個字怎麼讀？'}</h2>
         {current.type === 'audio' ? <button className="speak-button" onClick={() => speak(current.speechText)}><Volume2 size={35} /> <span>點我聽發音</span></button> : <div className="word-card">{current.prompt}</div>}
-        {current.type === 'order' ? <><div className="answer-tiles" aria-label="已選的注音">{answerTokens(current.answer).map((_, position) => <button key={position} className={selectedTokens[position] === undefined ? 'empty-tile' : 'filled-tile'} onClick={() => setSelectedTokens((previous) => previous.slice(0, position))} disabled={feedback !== null}>{selectedTokens[position] === undefined ? '?' : tokenChoices[selectedTokens[position]].value}</button>)}</div><div className="token-bank">{tokenChoices.map((token, index) => <button key={`${token.index}-${index}`} disabled={selectedTokens.includes(index) || feedback !== null} onClick={() => selectToken(index)}>{token.value}</button>)}</div><button className="check-button" disabled={selectedTokens.length !== tokenChoices.length || feedback !== null} onClick={() => submit(selectedTokens.map((index) => tokenChoices[index].value).join(''))}>檢查答案 <Check size={19} /></button></> : <div className="option-grid">{shuffleStable(current.options, current.id).map((option) => <button key={option} className={`option-button ${feedback && option === current.answer ? 'right' : ''} ${feedback === 'wrong' && option === selectedAnswer ? 'wrong' : ''}`} disabled={feedback !== null} onClick={() => { setSelectedAnswer(option); submit(option) }}>{option}</button>)}</div>}
+        {current.type === 'audio' && <div className="answer-mode"><button className={audioMode === 'choice' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('choice'); setHasInk(false) }}>選擇作答</button><button className={audioMode === 'write' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('write'); setHasInk(false) }}>手寫作答</button></div>}
+        {current.type === 'order' ? <><div className="answer-tiles" aria-label="已選的注音">{answerTokens(current.answer).map((_, position) => <button key={position} className={selectedTokens[position] === undefined ? 'empty-tile' : 'filled-tile'} onClick={() => setSelectedTokens((previous) => previous.slice(0, position))} disabled={feedback !== null}>{selectedTokens[position] === undefined ? '?' : tokenChoices[selectedTokens[position]].value}</button>)}</div><div className="token-bank">{tokenChoices.map((token, index) => <button key={`${token.index}-${index}`} disabled={selectedTokens.includes(index) || feedback !== null} onClick={() => selectToken(index)}>{token.value}</button>)}</div><button className="check-button" disabled={selectedTokens.length !== answerTokens(current.answer).length || feedback !== null} onClick={() => submit(selectedTokens.map((index) => tokenChoices[index].value).join(''))}>檢查答案 <Check size={19} /></button></> : current.type === 'audio' && audioMode === 'write' ? <div className="write-test"><p>在方框寫下聽到的注音，可用手指、觸控筆或滑鼠。</p><WritingBoard key={current.id} onInkChange={setHasInk} />{!showHandwritingAnswer ? <button className="check-button" disabled={!hasInk} onClick={() => setShowHandwritingAnswer(true)}>顯示答案並核對 <Check size={19} /></button> : <div className="self-check"><p>正確答案：<strong>{current.answer}</strong></p><span>比對你的手寫答案：</span><div><button onClick={() => recordResult(true)} disabled={feedback !== null}>我寫對了</button><button onClick={() => recordResult(false)} disabled={feedback !== null}>再練一次</button></div></div>}</div> : <div className="option-grid">{shuffleStable(current.options, current.id).map((option) => <button key={option} className={`option-button ${feedback && option === current.answer ? 'right' : ''} ${feedback === 'wrong' && option === selectedAnswer ? 'wrong' : ''}`} disabled={feedback !== null} onClick={() => { setSelectedAnswer(option); submit(option) }}>{option}</button>)}</div>}
         {feedback && <div className={`feedback ${feedback}`} role="status"><span>{feedback === 'correct' ? '答對了！太棒了 🌟' : `再加油！正確答案是 ${current.answer}`}</span><button onClick={nextQuestion}>{questionIndex + 1 === round.length ? '看結果' : '下一題'} <ArrowRight size={18} /></button></div>}
       </section>
     </main>}
 
-    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">ADVENTURE COMPLETE</span><h1>{resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
+    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">ADVENTURE COMPLETE</span><h1>{resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{multiRound ? '多字練習完成，繼續挑戰！' : resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level, multiRound)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
 
     {screen === 'admin' && <AdminPanel questions={questions} overrides={overrides} setOverrides={setOverrides} onBack={() => setScreen('home')} />}
     <footer>REXTRAIN · 在遊戲裡，開心學注音 <span>✦</span> 使用原創方塊視覺</footer>
@@ -235,7 +287,7 @@ function AdminPanel({ questions, overrides, setOverrides, onBack }: { questions:
     if (!q.prompt || !q.answer) { setMessage('請填寫題目與正確注音。'); return }
     if (q.type === 'audio' && !q.speechText) { setMessage('聽音題需要填寫朗讀文字。'); return }
     if (q.type !== 'order' && (q.options.length !== 4 || new Set(q.options).size !== 4 || !q.options.includes(q.answer))) { setMessage('選擇題需要 4 個不重複選項，且包含正確答案。'); return }
-    if (q.type === 'order') q.options = []
+    if (q.type === 'order' && !isValidDistractors(q.answer, q.options)) { setMessage('干擾注音需為 0～6 個不重複、且不在答案中的單一注音符號。'); return }
     setBusy(true)
     try { await persist(q); setEditing(null); setMessage('已存為本機草稿。下載發佈檔並提交到 GitHub 後才會公開。') }
     catch (error) { setMessage(`儲存失敗：${String(error)}`) }
@@ -275,7 +327,7 @@ function AdminPanel({ questions, overrides, setOverrides, onBack }: { questions:
       {showImport && <div className="import-panel"><h3>匯入 CSV 題目</h3><p>請使用 UTF-8 CSV，選項以直線符號 | 分隔。先預覽檢查，再正式匯入。</p><input type="file" accept=".csv,text/csv" onChange={(event) => void readFile(event.target.files?.[0])} />{importResult && <div className="import-preview"><strong>可匯入 {importResult.questions.length} 題 · 跳過重複 {importResult.skipped} 題 · 錯誤 {importResult.errors.length} 列</strong>{importResult.errors.map((error, index) => <p className="field-error" key={index}>{error}</p>)}<button className="primary-button" disabled={busy || importResult.errors.length > 0 || importResult.questions.length === 0} onClick={() => void commitImport()}>確認匯入</button></div>}</div>}
       {message && <p className="admin-message" role="status">{message}</p>}
       <div className="filter-tabs">{(['all', 'choice', 'order', 'audio'] as const).map((type) => <button key={type} className={filter === type ? 'active' : ''} onClick={() => setFilter(type)}>{type === 'all' ? '全部' : TYPE_LABELS[type]}</button>)}</div>
-      <div className="question-list">{shown.map((q) => <article className={`question-row ${!q.enabled ? 'disabled' : ''}`} key={q.id}><div className="question-row-icon">{q.type === 'audio' ? <Volume2 /> : q.type === 'order' ? <Sparkles /> : <BookOpen />}</div><div className="question-row-copy"><div><strong>{q.prompt}</strong><span className="pill">{TYPE_LABELS[q.type]}</span><span className="pill faint">第 {q.level} 關</span>{!q.enabled && <span className="pill off">已停用</span>}</div><p>答案：{q.answer}</p></div><div className="row-actions"><button aria-label={`編輯 ${q.prompt}`} onClick={() => { setEditing({ ...q, options: q.type === 'order' ? ['', '', '', ''] : [...q.options] }); setMessage('') }}><Pencil size={17} /></button><button aria-label={`停用 ${q.prompt}`} disabled={busy || !q.enabled} onClick={() => void handleDisable(q)}><Trash2 size={17} /></button></div></article>)}</div>
-      {editing && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null) }}><div className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title"><div className="modal-header"><h2 id="edit-title">{questions.some((q) => q.id === editing.id) ? '編輯題目' : '新增題目'}</h2><button aria-label="關閉" onClick={() => setEditing(null)}><X /></button></div><div className="form-grid"><label>題型<select value={editing.type} onChange={(event) => setEditing({ ...editing, type: event.target.value as QuestionType, options: event.target.value === 'order' ? [] : editing.options.length === 4 ? editing.options : ['', '', '', ''] })}><option value="choice">看字選注音</option><option value="order">注音拼拼看</option><option value="audio">聽聲音選注音</option></select></label><label>關卡<select value={editing.level} onChange={(event) => setEditing({ ...editing, level: Number(event.target.value) as Level })}><option value="1">森林起點</option><option value="2">沙漠探險</option><option value="3">星空城堡</option></select></label><label>題目文字<input value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="例如：貓" /></label><label>正確注音<input value={editing.answer} onChange={(event) => setEditing({ ...editing, answer: event.target.value })} placeholder="例如：ㄇㄠ" /></label>{editing.type !== 'order' && <label className="wide">四個選項，以 | 分隔<input value={editing.options.join('|')} onChange={(event) => setEditing({ ...editing, options: event.target.value.split('|') })} placeholder="ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ" /></label>}<label className="wide">朗讀文字{editing.type === 'audio' ? '（必填）' : '（選填）'}<input value={editing.speechText} onChange={(event) => setEditing({ ...editing, speechText: event.target.value })} placeholder="例如：貓" /></label><label className="checkbox-label"><input type="checkbox" checked={editing.enabled} onChange={(event) => setEditing({ ...editing, enabled: event.target.checked })} /> 啟用此題</label></div>{message && <p className="field-error">{message}</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setEditing(null)}>取消</button><button className="primary-button" disabled={busy} onClick={() => void handleSave()}><Check size={18} /> 儲存題目</button></div></div></div>}
+      <div className="question-list">{shown.map((q) => <article className={`question-row ${!q.enabled ? 'disabled' : ''}`} key={q.id}><div className="question-row-icon">{q.type === 'audio' ? <Volume2 /> : q.type === 'order' ? <Sparkles /> : <BookOpen />}</div><div className="question-row-copy"><div><strong>{q.prompt}</strong><span className="pill">{TYPE_LABELS[q.type]}</span><span className="pill faint">第 {q.level} 關</span>{!q.enabled && <span className="pill off">已停用</span>}</div><p>答案：{q.answer}</p></div><div className="row-actions"><button aria-label={`編輯 ${q.prompt}`} onClick={() => { setEditing({ ...q, options: [...q.options] }); setMessage('') }}><Pencil size={17} /></button><button aria-label={`停用 ${q.prompt}`} disabled={busy || !q.enabled} onClick={() => void handleDisable(q)}><Trash2 size={17} /></button></div></article>)}</div>
+      {editing && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditing(null) }}><div className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title"><div className="modal-header"><h2 id="edit-title">{questions.some((q) => q.id === editing.id) ? '編輯題目' : '新增題目'}</h2><button aria-label="關閉" onClick={() => setEditing(null)}><X /></button></div><div className="form-grid"><label>題型<select value={editing.type} onChange={(event) => setEditing({ ...editing, type: event.target.value as QuestionType, options: event.target.value === 'order' ? [] : editing.options.length === 4 ? editing.options : ['', '', '', ''] })}><option value="choice">看字選注音</option><option value="order">注音拼拼看</option><option value="audio">聽聲音選注音</option></select></label><label>關卡<select value={editing.level} onChange={(event) => setEditing({ ...editing, level: Number(event.target.value) as Level })}><option value="1">森林起點</option><option value="2">沙漠探險</option><option value="3">星空城堡</option></select></label><label>題目文字<input value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="例如：白雲" /></label><label>正確注音<input value={editing.answer} onChange={(event) => setEditing({ ...editing, answer: event.target.value })} placeholder="例如：ㄅㄞˊ ㄩㄣˊ" /></label><label className="wide">{editing.type === 'order' ? '干擾注音，以 | 分隔（可留空自動產生）' : '四個選項，以 | 分隔'}<input value={editing.options.join('|')} onChange={(event) => setEditing({ ...editing, options: event.target.value ? event.target.value.split('|') : [] })} placeholder={editing.type === 'order' ? 'ㄆ|ㄠ|ㄤ' : 'ㄇㄠ|ㄅㄠ|ㄏㄨㄚ|ㄩˊ'} /></label><label className="wide">朗讀文字{editing.type === 'audio' ? '（必填）' : '（選填）'}<input value={editing.speechText} onChange={(event) => setEditing({ ...editing, speechText: event.target.value })} placeholder="例如：白雲" /></label><label className="checkbox-label"><input type="checkbox" checked={editing.enabled} onChange={(event) => setEditing({ ...editing, enabled: event.target.checked })} /> 啟用此題</label></div>{message && <p className="field-error">{message}</p>}<div className="modal-actions"><button className="secondary-button" onClick={() => setEditing(null)}>取消</button><button className="primary-button" disabled={busy} onClick={() => void handleSave()}><Check size={18} /> 儲存題目</button></div></div></div>}
   </main>
 }

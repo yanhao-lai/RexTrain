@@ -1,4 +1,4 @@
-import type { Level, Question, QuestionType } from './model'
+import { orderDistractors, type Level, type Question, type QuestionType } from './model'
 
 interface Entry { level: Level; word: string; zhuyin: string }
 
@@ -23,6 +23,10 @@ const entries: Entry[] = [
   { level: 3, word: '電風扇', zhuyin: 'ㄉㄧㄢˋ ㄈㄥ ㄕㄢˋ' },
   { level: 3, word: '長頸鹿', zhuyin: 'ㄔㄤˊ ㄐㄧㄥˇ ㄌㄨˋ' },
   { level: 3, word: '彩虹橋', zhuyin: 'ㄘㄞˇ ㄏㄨㄥˊ ㄑㄧㄠˊ' },
+  { level: 3, word: '小小火車', zhuyin: 'ㄒㄧㄠˇ ㄒㄧㄠˇ ㄏㄨㄛˇ ㄔㄜ' },
+  { level: 3, word: '美麗花園', zhuyin: 'ㄇㄟˇ ㄌㄧˋ ㄏㄨㄚ ㄩㄢˊ' },
+  { level: 3, word: '快樂學習', zhuyin: 'ㄎㄨㄞˋ ㄌㄜˋ ㄒㄩㄝˊ ㄒㄧˊ' },
+  { level: 3, word: '天空白雲', zhuyin: 'ㄊㄧㄢ ㄎㄨㄥ ㄅㄞˊ ㄩㄣˊ' },
 ]
 
 const types: QuestionType[] = ['choice', 'order', 'audio']
@@ -39,7 +43,7 @@ export const seedQuestions: Question[] = entries.flatMap((entry, index) =>
     level: entry.level,
     prompt: entry.word,
     answer: entry.zhuyin,
-    options: type === 'order' ? [] : optionsFor(entry),
+    options: type === 'order' ? orderDistractors(entry.zhuyin, []) : optionsFor(entry),
     speechText: entry.word,
     enabled: true,
   })),
