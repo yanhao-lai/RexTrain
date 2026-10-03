@@ -12,6 +12,14 @@ export interface Question {
   enabled: boolean
 }
 
+export interface Exam {
+  id: string
+  title: string
+  description: string
+  questionIds: string[]
+  enabled: boolean
+}
+
 export interface Progress {
   stars: Record<string, number>
   attempts: number
@@ -57,6 +65,12 @@ export function practiceQuestions(questions: Question[], level: Level, voiceAvai
   return questions.filter((question) => question.enabled &&
     (mode === 'listening' ? question.type === 'audio' : mode === 'multi' ? Array.from(question.prompt).length >= 2 : question.level === level) &&
     (question.type !== 'audio' || voiceAvailable))
+}
+
+export function examQuestions(questions: Question[], exam: Exam, voiceAvailable: boolean): Question[] {
+  const byId = new Map(questions.map((question) => [question.id, question]))
+  return exam.questionIds.map((id) => byId.get(id)).filter((question): question is Question =>
+    Boolean(question?.enabled && (question.type !== 'audio' || voiceAvailable)))
 }
 
 export function shuffle<T>(items: T[]): T[] {
