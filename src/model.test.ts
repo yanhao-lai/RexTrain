@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { importQuestions, exportQuestions, CSV_EXAMPLE } from './csv'
-import { answerTokens, isValidDistractors, orderDistractors, starsForScore } from './model'
+import { answerTokens, isValidDistractors, orderDistractors, practiceQuestions, starsForScore } from './model'
 import { seedQuestions } from './seed'
 import { isQuestion } from './questionStore'
 
@@ -34,6 +34,14 @@ describe('starter question bank', () => {
   it('recognizes valid published questions and rejects broken data', () => {
     expect(seedQuestions.every(isQuestion)).toBe(true)
     expect(isQuestion({ ...seedQuestions[0], options: null })).toBe(false)
+  })
+
+  it('keeps independent listening rounds audio-only across levels', () => {
+    const listening = practiceQuestions(seedQuestions, 1, true, 'listening')
+    expect(listening.length).toBeGreaterThan(10)
+    expect(listening.every((question) => question.type === 'audio')).toBe(true)
+    expect(new Set(listening.map((question) => question.level)).size).toBe(3)
+    expect(practiceQuestions(seedQuestions, 1, false, 'listening')).toEqual([])
   })
 })
 

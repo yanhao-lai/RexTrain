@@ -21,3 +21,10 @@
 .self-check button:disabled{opacity:.5}
 .option-button{overflow-wrap:anywhere}
 @media(max-width:650px){.multi-start{margin:10px 0 0}.writing-area canvas{height:190px}.self-check>div{flex-wrap:wrap}}
+.listening-section{margin:0 0 60px}
+.listening-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.listening-grid article{background:#fff;border:1px solid #e4ece3;border-radius:16px;padding:25px;box-shadow:0 8px 20px #1d4c3510}
+.listening-grid h3{font-size:20px;margin:16px 0 7px}
+.listening-grid p{font-size:14px;color:#738679;min-height:43px;margin:0 0 19px}
+.listening-grid .level-button{max-width:300px}
+@media(max-width:650px){.listening-grid{grid-template-columns:1fr}.listening-grid article{padding:20px}.listening-grid p{min-height:0}}

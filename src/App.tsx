@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Download, FileUp, LockKeyhole, Pencil, Play, Plus, RotateCcw, Settings, Sparkles, Star, Trash2, Volume2, X } from 'lucide-react'
 import { CSV_EXAMPLE, exportQuestions, importQuestions, type ImportResult } from './csv'
 import { clearDrafts, readDrafts, saveQuestion, subscribeQuestions } from './questionStore'
-import { answerTokens, isValidDistractors, LEVELS, normalizeAnswer, orderDistractors, readProgress, saveProgress, shuffle, starsForScore, TYPE_LABELS, type Level, type Progress, type Question, type QuestionType } from './model'
+import { answerTokens, isValidDistractors, LEVELS, normalizeAnswer, orderDistractors, practiceQuestions, readProgress, saveProgress, shuffle, starsForScore, TYPE_LABELS, type Level, type Progress, type Question, type QuestionType } from './model'
 import { seedQuestions } from './seed'
 
 type Screen = 'home' | 'play' | 'result' | 'admin'
@@ -114,6 +114,7 @@ export default function App() {
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null)
   const [resultStars, setResultStars] = useState(0)
   const [multiRound, setMultiRound] = useState(false)
+  const [listeningMode, setListeningMode] = useState<'choice' | 'write' | null>(null)
   const [audioMode, setAudioMode] = useState<'choice' | 'write'>('choice')
   const [hasInk, setHasInk] = useState(false)
   const [showHandwritingAnswer, setShowHandwritingAnswer] = useState(false)
@@ -141,19 +142,21 @@ export default function App() {
     return mixed
   }, [current])
 
-  function start(nextLevel: Level, multi = false): void {
-    const pool = questions.filter((q) => q.enabled && (multi ? Array.from(q.prompt).length >= 2 : q.level === nextLevel) && (q.type !== 'audio' || voiceAvailable))
+  function start(nextLevel: Level, multi = false, listen: 'choice' | 'write' | null = null): void {
+    if (listen && !voiceAvailable) return
+    const pool = practiceQuestions(questions, nextLevel, voiceAvailable, listen ? 'listening' : multi ? 'multi' : 'level')
     const chosen = makeRound(pool)
     if (!chosen.length) return
     setLevel(nextLevel)
     setMultiRound(multi)
+    setListeningMode(listen)
     setRound(chosen)
     setQuestionIndex(0)
     setScore(0)
     setSelectedAnswer(null)
     setSelectedTokens([])
     setFeedback(null)
-    setAudioMode('choice')
+    setAudioMode(listen || 'choice')
     setHasInk(false)
     setShowHandwritingAnswer(false)
     setScreen('play')
@@ -179,7 +182,7 @@ export default function App() {
       setSelectedAnswer(null)
       setSelectedTokens([])
       setFeedback(null)
-      setAudioMode('choice')
+      setAudioMode(listeningMode || 'choice')
       setHasInk(false)
       setShowHandwritingAnswer(false)
       return
@@ -189,7 +192,7 @@ export default function App() {
     const earned = starsForScore(normalizedScore)
     setResultStars(earned)
     const next = {
-      stars: multiRound ? progress.stars : { ...progress.stars, [level]: Math.max(progress.stars[level] || 0, earned) },
+      stars: multiRound || listeningMode ? progress.stars : { ...progress.stars, [level]: Math.max(progress.stars[level] || 0, earned) },
       attempts: progress.attempts + round.length,
       correct: progress.correct + score,
     }
@@ -237,22 +240,23 @@ export default function App() {
           </article>
         })}</div>
       </section>
+      <section className="listening-section"><div className="section-head"><div><span className="section-kicker">LISTENING TEST</span><h2>獨立聽力測試 🎧</h2><p>只練聽音題，每回合最多 10 題；不影響冒險關卡的解鎖。</p></div></div><div className="listening-grid"><article><span className="how-icon blue"><Volume2 /></span><h3>聽力選擇測試</h3><p>聽完發音，從四個注音選項中找出答案。</p><button className="level-button" disabled={!voiceAvailable || !questions.some((q) => q.enabled && q.type === 'audio')} onClick={() => start(1, false, 'choice')}>開始選擇測試 <ArrowRight size={18} /></button></article><article><span className="how-icon gold"><Pencil /></span><h3>聽力手寫測試</h3><p>聽完發音，在畫布寫注音，再與正解核對。</p><button className="level-button" disabled={!voiceAvailable || !questions.some((q) => q.enabled && q.type === 'audio')} onClick={() => start(1, false, 'write')}>開始手寫測試 <ArrowRight size={18} /></button></article></div></section>
       <section className="how-section"><div className="section-head"><div><span className="section-kicker">HOW TO PLAY</span><h2>三種方式，玩出好注音</h2></div></div><div className="how-grid"><div><span className="how-icon green"><BookOpen /></span><h3>看字選注音</h3><p>單字或多字都能練習。</p></div><div><span className="how-icon gold"><Sparkles /></span><h3>注音拼拼看</h3><p>從含有干擾注音的方塊中排出答案。</p></div><div><span className="how-icon blue"><Volume2 /></span><h3>聽聲音選或寫注音</h3><p>聽發音後選擇答案，也能手寫自我核對。</p></div></div></section>
-      {!voiceAvailable && <p className="notice">這台裝置目前沒有可用的繁體中文語音；聽音題會暫時略過。可在裝置設定中加入繁體中文語音後重試。</p>}
+      {!voiceAvailable && <p className="notice">這台裝置目前沒有可用的繁體中文語音；聽力測試暫時無法開始，一般冒險會略過聽音題。可在裝置設定中加入繁體中文語音後重試。</p>}
     </main>}
 
     {screen === 'play' && current && <main className="play-main">
-      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{multiRound ? '📚 多字練習' : `${LEVELS[level - 1].icon} ${LEVELS[level - 1].title}`}</div><span>{questionIndex + 1} / {round.length}</span></div>
+      <div className="play-top"><button className="back-button" onClick={() => { window.speechSynthesis?.cancel(); setScreen('home') }}><ArrowLeft size={18} /> 返回地圖</button><div className="play-level">{listeningMode ? `🎧 聽力${listeningMode === 'write' ? '手寫' : '選擇'}測試` : multiRound ? '📚 多字練習' : `${LEVELS[level - 1].icon} ${LEVELS[level - 1].title}`}</div><span>{questionIndex + 1} / {round.length}</span></div>
       <div className="progress-track"><div style={{ width: `${((questionIndex + 1) / round.length) * 100}%` }} /></div>
       <section className="question-card"><span className="question-tag">{TYPE_LABELS[current.type]}</span><h2>{current.type === 'audio' ? '聽一聽，選出或寫出正確的注音！' : current.type === 'order' ? '把注音方塊排成正確答案！' : '這個字怎麼讀？'}</h2>
         {current.type === 'audio' ? <button className="speak-button" onClick={() => speak(current.speechText)}><Volume2 size={35} /> <span>點我聽發音</span></button> : <div className="word-card">{current.prompt}</div>}
-        {current.type === 'audio' && <div className="answer-mode"><button className={audioMode === 'choice' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('choice'); setHasInk(false) }}>選擇作答</button><button className={audioMode === 'write' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('write'); setHasInk(false) }}>手寫作答</button></div>}
+        {current.type === 'audio' && !listeningMode && <div className="answer-mode"><button className={audioMode === 'choice' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('choice'); setHasInk(false) }}>選擇作答</button><button className={audioMode === 'write' ? 'active' : ''} disabled={feedback !== null || showHandwritingAnswer} onClick={() => { setAudioMode('write'); setHasInk(false) }}>手寫作答</button></div>}
         {current.type === 'order' ? <><div className="answer-tiles" aria-label="已選的注音">{answerTokens(current.answer).map((_, position) => <button key={position} className={selectedTokens[position] === undefined ? 'empty-tile' : 'filled-tile'} onClick={() => setSelectedTokens((previous) => previous.slice(0, position))} disabled={feedback !== null}>{selectedTokens[position] === undefined ? '?' : tokenChoices[selectedTokens[position]].value}</button>)}</div><div className="token-bank">{tokenChoices.map((token, index) => <button key={`${token.index}-${index}`} disabled={selectedTokens.includes(index) || feedback !== null} onClick={() => selectToken(index)}>{token.value}</button>)}</div><button className="check-button" disabled={selectedTokens.length !== answerTokens(current.answer).length || feedback !== null} onClick={() => submit(selectedTokens.map((index) => tokenChoices[index].value).join(''))}>檢查答案 <Check size={19} /></button></> : current.type === 'audio' && audioMode === 'write' ? <div className="write-test"><p>在方框寫下聽到的注音，可用手指、觸控筆或滑鼠。</p><WritingBoard key={current.id} onInkChange={setHasInk} />{!showHandwritingAnswer ? <button className="check-button" disabled={!hasInk} onClick={() => setShowHandwritingAnswer(true)}>顯示答案並核對 <Check size={19} /></button> : <div className="self-check"><p>正確答案：<strong>{current.answer}</strong></p><span>比對你的手寫答案：</span><div><button onClick={() => recordResult(true)} disabled={feedback !== null}>我寫對了</button><button onClick={() => recordResult(false)} disabled={feedback !== null}>再練一次</button></div></div>}</div> : <div className="option-grid">{shuffleStable(current.options, current.id).map((option) => <button key={option} className={`option-button ${feedback && option === current.answer ? 'right' : ''} ${feedback === 'wrong' && option === selectedAnswer ? 'wrong' : ''}`} disabled={feedback !== null} onClick={() => { setSelectedAnswer(option); submit(option) }}>{option}</button>)}</div>}
         {feedback && <div className={`feedback ${feedback}`} role="status"><span>{feedback === 'correct' ? '答對了！太棒了 🌟' : `再加油！正確答案是 ${current.answer}`}</span><button onClick={nextQuestion}>{questionIndex + 1 === round.length ? '看結果' : '下一題'} <ArrowRight size={18} /></button></div>}
       </section>
     </main>}
 
-    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">ADVENTURE COMPLETE</span><h1>{resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{multiRound ? '多字練習完成，繼續挑戰！' : resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level, multiRound)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
+    {screen === 'result' && <main className="result-main"><div className="result-card"><div className="result-emoji">{resultStars ? '🏆' : '💪'}</div><span className="section-kicker">{listeningMode ? 'LISTENING TEST COMPLETE' : 'ADVENTURE COMPLETE'}</span><h1>{listeningMode ? '聽力測試完成！' : resultStars ? '關卡完成！' : '再挑戰一次！'}</h1><p>你在 {round.length} 題中答對了 <strong>{score}</strong> 題</p><Stars count={resultStars} /><p className="result-hint">{listeningMode ? '聽力測試成績已記錄，繼續練習吧！' : multiRound ? '多字練習完成，繼續挑戰！' : resultStars ? '星星已經收進你的冒險背包！' : '答對一半以上就能拿到第一顆星。'}</p><div className="result-actions"><button className="secondary-button" onClick={() => setScreen('home')}><ArrowLeft size={18} /> 回地圖</button><button className="primary-button" onClick={() => start(level, multiRound, listeningMode)}><RotateCcw size={18} /> 再玩一次</button></div></div></main>}
 
     {screen === 'admin' && <AdminPanel questions={questions} overrides={overrides} setOverrides={setOverrides} onBack={() => setScreen('home')} />}
     <footer>REXTRAIN · 在遊戲裡，開心學注音 <span>✦</span> 使用原創方塊視覺</footer>

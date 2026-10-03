@@ -53,6 +53,12 @@ export function isValidDistractors(answer: string, options: string[]): boolean {
     options.every((symbol) => Array.from(symbol).length === 1 && extraSymbols.includes(symbol) && !used.has(symbol))
 }
 
+export function practiceQuestions(questions: Question[], level: Level, voiceAvailable: boolean, mode: 'level' | 'multi' | 'listening'): Question[] {
+  return questions.filter((question) => question.enabled &&
+    (mode === 'listening' ? question.type === 'audio' : mode === 'multi' ? Array.from(question.prompt).length >= 2 : question.level === level) &&
+    (question.type !== 'audio' || voiceAvailable))
+}
+
 export function shuffle<T>(items: T[]): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i--) {
